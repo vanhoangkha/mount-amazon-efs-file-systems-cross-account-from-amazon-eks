@@ -2,126 +2,55 @@
 
 ## Introduction
 
-This document provides a comprehensive overview of the cross-account Amazon EFS mounting solution for Amazon EKS clusters, specifically designed for banking and financial services environments.
+This document provides a comprehensive overview of the cross-account Amazon EFS mounting solution for Amazon EKS clusters, specifically designed for testing and validating EFS cross-account functionality.
 
 ## Architecture Principles
 
-### 1. Security First
-- **Principle of Least Privilege**: All IAM roles and policies follow minimal access requirements
-- **Defense in Depth**: Multiple layers of security controls
+### 1. Simplicity First
+- **Minimal Dependencies**: Focus on EFS testing without database complexity
+- **Clear Purpose**: Dedicated to validating cross-account EFS functionality
+- **Easy Deployment**: Streamlined setup and testing process
+- **Comprehensive Testing**: Thorough validation of all EFS operations
+
+### 2. Security by Design
+- **Principle of Least Privilege**: All IAM roles follow minimal access requirements
+- **Cross-Account Isolation**: Secure boundaries between AWS accounts
 - **Encryption Everywhere**: Data encrypted at rest and in transit
-- **Audit Trail**: Complete logging and monitoring of all operations
+- **Audit Trail**: Complete logging of all EFS operations
 
-### 2. High Availability
-- **Multi-AZ Deployment**: Resources distributed across availability zones
-- **Redundancy**: No single points of failure
-- **Auto-Recovery**: Automated failover and recovery mechanisms
-- **Load Distribution**: Traffic distributed across multiple instances
-
-### 3. Performance Optimization
-- **Sub-Minute Recovery**: RTO < 60 seconds
-- **Low Latency**: API response times < 200ms
-- **High Throughput**: Optimized EFS performance modes
-- **Efficient Scaling**: Auto-scaling based on demand
-
-### 4. Operational Excellence
-- **Infrastructure as Code**: All resources defined in Terraform
-- **Automated Deployment**: Scripted deployment and configuration
-- **Comprehensive Monitoring**: Real-time metrics and alerting
-- **Documentation**: Complete operational procedures
+### 3. Performance Validation
+- **Dual-Write Testing**: Validate simultaneous writes to multiple EFS systems
+- **Latency Measurement**: Track performance across accounts
+- **Throughput Testing**: Validate EFS performance limits
+- **Consistency Verification**: Ensure data integrity across accounts
 
 ## High-Level Architecture
 
-![Cross-Account EFS Architecture](../../architecture/diagrams/banking-cross-account-same-region.png)
+![Cross-Account EFS Architecture](../../architecture/diagrams/efs-cross-account-architecture.png)
 
-*Figure 1: Banking Cross-Account Architecture showing the complete infrastructure across three AWS accounts in ap-southeast-1 region*
+*Figure 1: Simplified cross-account EFS architecture with test applications*
 
 The architecture consists of three main components:
 
-1. **CoreBank Account**: Central hub containing shared EFS, RDS database, and ElastiCache
-2. **Satellite Account 1**: Cards and payments services with dual EFS mounts
-3. **Satellite Account 2**: Loans and deposits services with dual EFS mounts
+1. **CoreBank Account**: Central hub containing shared EFS and test application
+2. **Satellite Account 1**: Test application with dual EFS mounts (local + cross-account)
+3. **Satellite Account 2**: Test application with dual EFS mounts (local + cross-account)
 
-Each satellite account implements a dual-write pattern where applications write to both local EFS (for performance) and CoreBank EFS (for data synchronization).
-
-## Component Architecture
-
-### 1. CoreBank Account Components
-
-#### EKS Cluster
-- **Purpose**: Hosts core banking applications
-- **Configuration**: 
-  - Node Type: c5.xlarge (4 vCPU, 8GB RAM)
-  - Min/Max Nodes: 3/10
-  - Auto-scaling enabled
-- **Features**:
-  - Multi-AZ deployment
-  - Managed node groups
-  - EFS CSI driver
-  - Load balancer controller
-
-#### EFS Shared Storage
-- **Purpose**: Central data repository for all banking data
-- **Configuration**:
-  - Performance Mode: General Purpose
-  - Throughput Mode: Provisioned (1000 MiB/s)
-  - Encryption: Enabled (at rest and in transit)
-- **Access Points**:
-  - Satellite-1 Access Point: `/satellite1`
-  - Satellite-2 Access Point: `/satellite2`
-
-#### RDS Database
-- **Purpose**: Transactional data storage
-- **Configuration**:
-  - Engine: PostgreSQL 15.4
-  - Instance: db.r5.xlarge
-  - Multi-AZ: Enabled
-  - Backup: 7 days retention
-
-#### ElastiCache Redis
-- **Purpose**: Caching and session storage
-- **Configuration**:
-  - Node Type: cache.r6g.large
-  - Cluster Mode: Enabled
-  - Shards: 3, Replicas: 2
-
-### 2. Satellite Account Components
-
-#### EKS Clusters
-- **Purpose**: Host satellite banking applications
-- **Configuration**:
-  - Node Type: c5.large (2 vCPU, 4GB RAM)
-  - Min/Max Nodes: 2/6
-  - Auto-scaling enabled
-
-#### Dual EFS Storage
-Each satellite account has two EFS mount points:
-
-1. **Local EFS**
-   - Purpose: Local data storage and caching
-   - Throughput: 500 MiB/s provisioned
-   - Access: Account-local only
-
-2. **Cross-Account EFS Mount**
-   - Purpose: Access to CoreBank shared EFS
-   - Access: Via EFS Access Points
-   - Security: Cross-account IAM roles
+Each satellite account implements a dual-write pattern where applications write to both local EFS (for performance) and CoreBank EFS (for cross-account validation).
 
 ## Network Architecture
 
-## Network Architecture
+![Network Architecture](../../architecture/diagrams/efs-network-architecture.png)
 
-![Network Architecture](../../architecture/diagrams/banking-network-cross-account.png)
-
-*Figure 2: Network topology showing VPC peering connections, subnet design, and cross-account connectivity*
+*Figure 2: Network topology showing VPC peering and EFS test application deployment*
 
 ### VPC Design
 
 The network architecture implements a hub-and-spoke model with VPC peering:
 
-- **CoreBank VPC (10.0.0.0/16)**: Central hub with multi-tier subnet design
-- **Satellite-1 VPC (10.1.0.0/16)**: Cards and payments services network
-- **Satellite-2 VPC (10.2.0.0/16)**: Loans and deposits services network
+- **CoreBank VPC (10.0.0.0/16)**: Central hub with EFS test application
+- **Satellite-1 VPC (10.1.0.0/16)**: Test application with dual EFS access
+- **Satellite-2 VPC (10.2.0.0/16)**: Test application with dual EFS access
 
 ### Connectivity Model
 
@@ -136,6 +65,87 @@ Route Tables:
 - Satellite-1 → CoreBank: 10.0.0.0/16 via pcx-12345
 - Satellite-2 → CoreBank: 10.0.0.0/16 via pcx-67890
 ```
+
+## Security Architecture
+
+![Security Architecture](../../architecture/diagrams/efs-security-architecture.png)
+
+*Figure 3: Security architecture with cross-account IAM roles and access controls*
+
+### Cross-Account Access Model
+
+The security architecture implements a zero-trust model with multiple layers of access control:
+
+1. **Network Security**: VPC isolation with security groups
+2. **Identity Management**: Cross-account IAM roles with IRSA
+3. **Data Protection**: EFS access points for granular file system access
+4. **Encryption**: End-to-end encryption using AWS KMS
+5. **Monitoring**: Comprehensive audit logging
+
+### Security Controls
+
+The security model uses EFS Access Points to provide granular access control:
+
+- **Satellite-1 Access Point**: `/satellite1` directory with UID/GID 1001
+- **Satellite-2 Access Point**: `/satellite2` directory with UID/GID 1002
+- **Cross-Account Roles**: IRSA-enabled service accounts for secure access
+- **KMS Encryption**: All EFS systems encrypted with customer-managed keys
+
+## Component Architecture
+
+### 1. EFS Test Application
+
+#### Purpose
+- Validate cross-account EFS mounting functionality
+- Test dual-write patterns between local and remote EFS
+- Provide comprehensive testing APIs
+- Monitor performance and reliability
+
+#### Features
+- **Health Checks**: Monitor EFS mount health
+- **Dual-Write Operations**: Write to both local and cross-account EFS
+- **Read Operations**: Read from specific EFS mounts
+- **File Listing**: Browse EFS directory contents
+- **Performance Metrics**: Track latency and throughput
+- **Automated Testing**: Built-in test suites
+
+#### API Endpoints
+```
+GET  /health          - Health check for EFS mounts
+POST /write           - Write file with dual-write pattern
+GET  /read            - Read file from specific mount
+GET  /list            - List files in EFS directory
+GET  /stats           - Get application statistics
+POST /test            - Run automated test suite
+```
+
+### 2. EFS Storage Systems
+
+#### CoreBank EFS (Shared)
+- **Purpose**: Central data repository accessible from all accounts
+- **Configuration**: Provisioned throughput (1000 MiB/s)
+- **Access Control**: EFS Access Points for each satellite account
+- **Encryption**: KMS encryption at rest and in transit
+
+#### Satellite Local EFS
+- **Purpose**: Local storage for each satellite account
+- **Configuration**: Provisioned throughput (500 MiB/s)
+- **Access Control**: Account-local access only
+- **Encryption**: KMS encryption at rest and in transit
+
+### 3. EKS Clusters
+
+#### CoreBank Cluster
+- **Node Type**: c5.large (2 vCPU, 4GB RAM)
+- **Scaling**: 2-6 nodes with auto-scaling
+- **Add-ons**: EFS CSI driver, AWS Load Balancer Controller
+- **Purpose**: Host EFS test application
+
+#### Satellite Clusters
+- **Node Type**: c5.large (2 vCPU, 4GB RAM)
+- **Scaling**: 1-4 nodes with auto-scaling
+- **Add-ons**: EFS CSI driver, AWS Load Balancer Controller
+- **Purpose**: Host EFS test applications with dual mounts
 
 ## Data Flow Architecture
 
@@ -170,7 +180,7 @@ Route Tables:
 
 2. **Parallel Write Execution**
    - Start local EFS write (fast path)
-   - Start cross-account EFS write (sync path)
+   - Start cross-account EFS write (validation path)
    - Execute both operations concurrently
 
 3. **Write Completion**
@@ -190,248 +200,117 @@ Route Tables:
    - Route request to appropriate EFS
 
 2. **Data Retrieval**
-   - Read from local EFS (preferred)
-   - Fallback to cross-account EFS if needed
+   - Read from specified EFS mount
+   - Handle file not found scenarios
 
 3. **Response**
    - Return data to application
-   - Cache frequently accessed data
+   - Include metadata about source mount
 
-## Security Architecture
+## Testing Architecture
 
-## Security Architecture
+### Test Categories
 
-![Security Architecture](../../architecture/diagrams/banking-security-cross-account.png)
+#### 1. Health Testing
+- **EFS Mount Health**: Verify both mounts are accessible
+- **Write/Read Operations**: Basic functionality validation
+- **Performance Metrics**: Latency and throughput measurement
 
-*Figure 3: Cross-account security model showing IAM roles, EFS access points, and security controls*
+#### 2. Functional Testing
+- **Dual-Write Validation**: Ensure data written to both EFS systems
+- **Cross-Account Access**: Verify cross-account EFS accessibility
+- **Data Consistency**: Validate data integrity across mounts
 
-### Cross-Account Access Model
+#### 3. Performance Testing
+- **Throughput Testing**: Measure files per second
+- **Latency Testing**: Track write/read response times
+- **Concurrent Operations**: Test multiple simultaneous operations
 
-The security architecture implements a zero-trust model with multiple layers of access control:
+#### 4. Integration Testing
+- **Cross-Account Consistency**: Verify data sync between accounts
+- **Failover Testing**: Test behavior when one EFS is unavailable
+- **Recovery Testing**: Validate system recovery capabilities
 
-1. **Network Security**: VPC isolation with security groups and NACLs
-2. **Identity Management**: Cross-account IAM roles with least privilege
-3. **Data Protection**: EFS access points for granular file system access
-4. **Encryption**: End-to-end encryption using AWS KMS
-5. **Monitoring**: Comprehensive audit logging and real-time monitoring
+### Test Automation
 
-### Security Controls
+The solution includes comprehensive test automation:
+
+- **Automated Test Suite**: Built into each application
+- **Health Monitoring**: Continuous health checks
+- **Performance Tracking**: Real-time metrics collection
+- **Failure Detection**: Automatic error detection and reporting
+
+## Deployment Architecture
+
+### Infrastructure as Code
+
+The solution uses automated deployment scripts:
+
+1. **EKS Deployment**: Automated cluster creation with required add-ons
+2. **EFS Setup**: Automated EFS creation with cross-account policies
+3. **Application Build**: Docker image build and ECR push
+4. **Application Deployment**: Kubernetes manifest deployment
+5. **Testing**: Automated functionality validation
+
+### Deployment Sequence
 
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   CoreBank      │    │   Satellite-1   │    │   Satellite-2   │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │ ┌─────────────┐ │    │ ┌─────────────┐ │
-│ │EFS Resource │ │    │ │Cross-Account│ │    │ │Cross-Account│ │
-│ │Policy       │ │    │ │IAM Role     │ │    │ │IAM Role     │ │
-│ │             │ │    │ │             │ │    │ │             │ │
-│ │Allow:       │ │    │ │AssumeRole   │ │    │ │AssumeRole   │ │
-│ │- Satellite-1│◄┼────┼─┤Permissions  │ │    │ │Permissions  │ │
-│ │- Satellite-2│◄┼────┼─┤             │ │    │ │             │ │
-│ └─────────────┘ │    │ └─────────────┘ │    │ └─────────────┘ │
-│                 │    │                 │    │                 │
-│ ┌─────────────┐ │    │                 │    │                 │
-│ │EFS Access   │ │    │                 │    │                 │
-│ │Points       │ │    │                 │    │                 │
-│ │- /satellite1│ │    │                 │    │                 │
-│ │- /satellite2│ │    │                 │    │                 │
-│ └─────────────┘ │    │                 │    │                 │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+1. Deploy EKS Clusters
+   ├── Create clusters in all accounts
+   ├── Install EFS CSI driver
+   └── Configure IRSA for cross-account access
+
+2. Deploy EFS Infrastructure
+   ├── Create EFS systems
+   ├── Setup cross-account policies
+   ├── Create access points
+   └── Configure security groups
+
+3. Build and Deploy Applications
+   ├── Build Docker images
+   ├── Push to ECR repositories
+   ├── Deploy to EKS clusters
+   └── Configure dual EFS mounts
+
+4. Validate Deployment
+   ├── Run health checks
+   ├── Execute test suites
+   ├── Verify cross-account access
+   └── Generate test reports
 ```
 
-### Security Controls
-
-1. **Network Security**
-   - VPC isolation
-   - Security groups with minimal access
-   - NACLs for additional protection
-   - VPC Flow Logs enabled
-
-2. **Identity and Access Management**
-   - Cross-account IAM roles
-   - Least privilege access
-   - MFA for administrative access
-   - Regular access reviews
-
-3. **Data Protection**
-   - Encryption at rest (KMS)
-   - Encryption in transit (TLS)
-   - EFS Access Points for granular control
-   - Backup encryption
-
-4. **Monitoring and Auditing**
-   - CloudTrail for API logging
-   - VPC Flow Logs for network monitoring
-   - EFS access logging
-   - Real-time security monitoring
-
-## Performance Architecture
-
-### Performance Targets
-
-| Metric | Target | Measurement |
-|--------|--------|-------------|
-| RTO (Recovery Time Objective) | < 60 seconds | Time to restore service |
-| RPO (Recovery Point Objective) | < 30 seconds | Maximum data loss |
-| API Response Time | < 200ms (95th percentile) | Application response |
-| EFS Dual-Write Time | < 60 seconds | Cross-account sync |
-| System Availability | 99.99% | Monthly uptime |
-
-### Performance Optimizations
-
-1. **EFS Performance**
-   - Provisioned throughput mode
-   - Optimized mount options
-   - Connection pooling
-   - Local caching
-
-2. **Application Performance**
-   - Async I/O operations
-   - Connection pooling
-   - Batch processing
-   - Efficient serialization
-
-3. **Network Performance**
-   - Placement groups
-   - Enhanced networking
-   - Optimized instance types
-   - Load balancer optimization
-
-4. **Database Performance**
-   - Connection pooling
-   - Read replicas
-   - Query optimization
-   - Caching strategies
-
-## Monitoring Architecture
+## Monitoring and Observability
 
 ### Metrics Collection
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Application   │    │   Infrastructure│    │    Business     │
-│    Metrics      │    │     Metrics     │    │    Metrics      │
-│                 │    │                 │    │                 │
-│• Response Time  │    │• CPU/Memory     │    │• Transaction    │
-│• Error Rate     │    │• Network I/O    │    │  Volume         │
-│• Throughput     │    │• Disk I/O       │    │• Success Rate   │
-│• Dual-Write     │    │• EFS Performance│    │• Revenue Impact │
-│  Latency        │    │                 │    │                 │
-└─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
-          │                      │                      │
-          └──────────────────────┼──────────────────────┘
-                                 │
-                    ┌─────────────▼─────────────┐
-                    │      CloudWatch          │
-                    │   Metrics & Alarms       │
-                    └─────────────┬─────────────┘
-                                 │
-                    ┌─────────────▼─────────────┐
-                    │     Notification         │
-                    │   SNS → Slack/Email      │
-                    └──────────────────────────┘
-```
+- **Application Metrics**: Response times, error rates, throughput
+- **EFS Metrics**: Mount health, latency, throughput utilization
+- **Infrastructure Metrics**: CPU, memory, network usage
+- **Security Metrics**: Access attempts, authentication failures
 
-### Alerting Strategy
+### Logging
 
-1. **Critical Alerts** (Immediate Response)
-   - System down or unavailable
-   - Data corruption detected
-   - Security breach indicators
-   - Cross-account access failures
+- **Application Logs**: Structured JSON logging
+- **EFS Access Logs**: File system access tracking
+- **Kubernetes Logs**: Pod and cluster events
+- **Security Logs**: IAM role assumptions, policy violations
 
-2. **Warning Alerts** (Response within 15 minutes)
-   - Performance degradation
-   - High error rates
-   - Resource utilization > 80%
-   - Backup failures
+### Alerting
 
-3. **Informational Alerts** (Response within 1 hour)
-   - Capacity planning thresholds
-   - Cost optimization opportunities
-   - Maintenance reminders
-
-## Disaster Recovery Architecture
-
-### Recovery Strategies
-
-1. **High Availability (HA)**
-   - Multi-AZ deployment
-   - Auto-scaling groups
-   - Load balancer health checks
-   - Automated failover
-
-2. **Backup and Restore**
-   - EFS automatic backups
-   - RDS automated backups
-   - Cross-region backup replication
-   - Point-in-time recovery
-
-3. **Disaster Recovery (DR)**
-   - Cross-region replication
-   - Infrastructure as Code
-   - Automated DR procedures
-   - Regular DR testing
-
-### Recovery Procedures
-
-1. **Automated Recovery**
-   - Health check failures trigger auto-scaling
-   - Load balancer removes unhealthy targets
-   - EKS replaces failed nodes automatically
-   - Database failover to standby
-
-2. **Manual Recovery**
-   - Cross-region failover procedures
-   - Data restoration from backups
-   - Infrastructure recreation
-   - Application redeployment
-
-## Compliance and Governance
-
-### Banking Compliance
-
-1. **Data Residency**
-   - All data remains in ap-southeast-1
-   - No cross-border data transfer
-   - Compliance with local regulations
-
-2. **Audit Requirements**
-   - Complete audit trail
-   - 7-year data retention
-   - Regular compliance assessments
-   - Third-party audits
-
-3. **Security Standards**
-   - PCI DSS compliance
-   - ISO 27001 alignment
-   - SOC 2 Type II
-   - Regular penetration testing
-
-### Governance Framework
-
-1. **Change Management**
-   - Infrastructure as Code
-   - Peer review process
-   - Automated testing
-   - Rollback procedures
-
-2. **Access Control**
-   - Role-based access control
-   - Regular access reviews
-   - Privileged access management
-   - Multi-factor authentication
-
-3. **Risk Management**
-   - Regular risk assessments
-   - Threat modeling
-   - Incident response procedures
-   - Business continuity planning
+- **Health Alerts**: EFS mount failures, application errors
+- **Performance Alerts**: High latency, low throughput
+- **Security Alerts**: Unauthorized access attempts
+- **Infrastructure Alerts**: Resource utilization thresholds
 
 ## Conclusion
 
-This architecture provides a robust, secure, and high-performance solution for cross-account EFS mounting in banking environments. The design emphasizes security, compliance, and operational excellence while meeting stringent performance requirements.
+This architecture provides a comprehensive solution for testing and validating cross-account EFS functionality. The simplified design focuses on the core EFS capabilities while maintaining security best practices and providing thorough testing capabilities.
 
-The dual-write pattern ensures data consistency and availability, while the cross-account access model provides secure isolation between different banking services. Comprehensive monitoring and alerting ensure rapid detection and resolution of issues.
+The solution is designed to be:
+- **Easy to deploy**: Automated scripts for complete setup
+- **Comprehensive**: Full testing of EFS cross-account features
+- **Secure**: Proper IAM roles and encryption
+- **Observable**: Complete monitoring and logging
+- **Scalable**: Auto-scaling based on demand
 
 For detailed implementation guidance, refer to the deployment documentation and infrastructure code provided in this repository.

@@ -7,19 +7,19 @@ This document outlines the complete infrastructure requirements for deploying th
 ## Architecture Diagrams
 
 ### High-Level Architecture
-![Cross-Account EFS Architecture](../diagrams/banking-cross-account-same-region.png)
+![Cross-Account EFS Architecture](../diagrams/efs-cross-account-architecture.png)
 
-*Figure 1: Complete cross-account architecture showing the dual-write pattern between CoreBank and Satellite accounts*
+*Figure 1: Simplified cross-account EFS architecture with test applications*
 
 ### Network Architecture
-![Network Architecture](../diagrams/banking-network-cross-account.png)
+![Network Architecture](../diagrams/efs-network-architecture.png)
 
-*Figure 2: Network topology with VPC peering connections and security group configurations*
+*Figure 2: Network topology showing VPC peering and EFS test application deployment*
 
 ### Security Architecture
-![Security Architecture](../diagrams/banking-security-cross-account.png)
+![Security Architecture](../diagrams/efs-security-architecture.png)
 
-*Figure 3: Cross-account security model with IAM roles and access controls*
+*Figure 3: Security architecture with cross-account IAM roles and access controls*
 
 ## AWS Account Structure
 

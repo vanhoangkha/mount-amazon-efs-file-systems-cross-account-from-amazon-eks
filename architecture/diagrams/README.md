@@ -1,65 +1,65 @@
 # Architecture Diagrams
 
-This directory contains the visual architecture diagrams for the cross-account EFS solution.
+This directory contains the visual architecture diagrams for the cross-account EFS testing solution.
 
 ## Available Diagrams
 
 ### 1. High-Level Architecture
-**File**: `banking-cross-account-same-region.png`
+**File**: `efs-cross-account-architecture.png`
 
-![Cross-Account EFS Architecture](banking-cross-account-same-region.png)
+![Cross-Account EFS Architecture](efs-cross-account-architecture.png)
 
-**Description**: Complete cross-account architecture showing the dual-write pattern between CoreBank and Satellite accounts. This diagram illustrates:
+**Description**: Simplified cross-account EFS architecture with test applications. This diagram illustrates:
 - Three AWS accounts (CoreBank + 2 Satellites)
-- EKS clusters in each account
-- Dual EFS mount pattern
-- Cross-account data flow
-- Core banking infrastructure (RDS, ElastiCache)
+- EKS clusters with EFS test applications
+- Dual EFS mount pattern for testing
+- Cross-account data flow validation
+- ECR repositories for container images
 
 **Use Cases**:
-- Executive presentations
+- Solution overview presentations
 - Architecture reviews
-- Solution overview documentation
+- Testing strategy documentation
 - Stakeholder communications
 
 ---
 
 ### 2. Network Architecture
-**File**: `banking-network-cross-account.png`
+**File**: `efs-network-architecture.png`
 
-![Network Architecture](banking-network-cross-account.png)
+![Network Architecture](efs-network-architecture.png)
 
-**Description**: Detailed network topology showing VPC peering connections, subnet design, and security group configurations. This diagram covers:
+**Description**: Network topology showing VPC peering and EFS test application deployment. This diagram covers:
 - VPC peering between accounts
-- Multi-tier subnet architecture
-- Security group relationships
-- Network traffic flows
+- Application load balancers
+- EKS cluster networking
 - EFS mount target placement
+- Cross-account network flows
 
 **Use Cases**:
 - Network planning and design
+- Connectivity troubleshooting
 - Security reviews
-- Troubleshooting connectivity issues
 - Infrastructure deployment planning
 
 ---
 
 ### 3. Security Architecture
-**File**: `banking-security-cross-account.png`
+**File**: `efs-security-architecture.png`
 
-![Security Architecture](banking-security-cross-account.png)
+![Security Architecture](efs-security-architecture.png)
 
-**Description**: Cross-account security model showing IAM roles, access controls, and security boundaries. This diagram details:
+**Description**: Security architecture with cross-account IAM roles and access controls. This diagram details:
 - Cross-account IAM role relationships
 - EFS access points and policies
-- Security control boundaries
-- Trust relationships
-- Access flow patterns
+- IRSA (IAM Roles for Service Accounts)
+- KMS encryption boundaries
+- Security control flows
 
 **Use Cases**:
 - Security architecture reviews
-- Compliance documentation
 - IAM policy design
+- Compliance documentation
 - Security audit preparation
 
 ## Diagram Usage Guidelines

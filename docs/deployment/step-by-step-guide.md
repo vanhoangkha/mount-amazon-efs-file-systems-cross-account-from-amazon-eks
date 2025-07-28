@@ -6,24 +6,24 @@ This guide provides detailed instructions for deploying the cross-account EFS so
 
 Before starting the deployment, let's understand the complete architecture:
 
-![Cross-Account EFS Architecture](../../architecture/diagrams/banking-cross-account-same-region.png)
+![Cross-Account EFS Architecture](../../architecture/diagrams/efs-cross-account-architecture.png)
 
-*Figure 1: Complete cross-account architecture that will be deployed*
+*Figure 1: Simplified cross-account EFS architecture with test applications*
 
 The deployment will create:
-- **CoreBank Account**: Central hub with shared EFS, RDS, and ElastiCache
-- **Satellite Account 1**: Cards and payments services with dual EFS mounts
-- **Satellite Account 2**: Loans and deposits services with dual EFS mounts
+- **CoreBank Account**: Central hub with shared EFS and test application
+- **Satellite Account 1**: Test application with dual EFS mounts (local + cross-account)
+- **Satellite Account 2**: Test application with dual EFS mounts (local + cross-account)
 
 ## Network Architecture
 
-![Network Architecture](../../architecture/diagrams/banking-network-cross-account.png)
+![Network Architecture](../../architecture/diagrams/efs-network-architecture.png)
 
-*Figure 2: Network topology showing VPC peering and subnet design*
+*Figure 2: Network topology showing VPC peering and EFS test application deployment*
 
 ## Security Model
 
-![Security Architecture](../../architecture/diagrams/banking-security-cross-account.png)
+![Security Architecture](../../architecture/diagrams/efs-security-architecture.png)
 
 *Figure 3: Security architecture with cross-account IAM roles and access controls*
 
