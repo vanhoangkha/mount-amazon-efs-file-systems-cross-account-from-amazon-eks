@@ -55,8 +55,8 @@ This solution implements a **dual-write pattern** where satellite applications w
 - AWS CLI configured with appropriate permissions
 - kubectl installed (v1.28+)
 - eksctl installed (v0.147+)
-- Terraform installed (v1.5+)
 - Docker installed (for building applications)
+- Helm installed (for EKS add-ons)
 
 ### 1. Clone Repository
 
@@ -79,40 +79,50 @@ export SATELLITE2_ACCOUNT="333333333333"
 export AWS_REGION="ap-southeast-1"
 ```
 
-### 3. Deploy Infrastructure
+### 3. Deploy Complete Solution
 
 ```bash
-# Deploy complete infrastructure
-./scripts/deploy-infrastructure.sh
+# Step 1: Deploy EKS clusters
+./scripts/deploy-eks-clusters.sh
 
-# Or deploy step by step
-./scripts/01-deploy-networking.sh
-./scripts/02-deploy-eks-clusters.sh
-./scripts/03-deploy-efs-storage.sh
-./scripts/04-setup-cross-account-access.sh
+# Step 2: Deploy EFS infrastructure
+./scripts/deploy-efs-infrastructure.sh
+
+# Step 3: Build and push test application to ECR
+./scripts/build-and-push-image.sh
+
+# Step 4: Deploy EFS test applications
+./scripts/deploy-efs-test-app.sh
+
+# Step 5: Test EFS cross-account functionality
+./scripts/test-efs-cross-account.sh
 ```
 
-### 4. Deploy Applications
+### 4. Test EFS Functionality
 
 ```bash
-# Deploy banking applications
-./scripts/deploy-applications.sh
+# Get application endpoints
+source app-endpoints.env
 
-# Verify deployment
-./scripts/health-check.sh
-```
+# Test health
+curl http://$SATELLITE_1_ENDPOINT/health
 
-### 5. Run Tests
+# Test dual-write functionality
+curl -X POST -H "Content-Type: application/json" \
+  -d '{"filename":"test/sample.json","content":"Hello EFS!","metadata":{"source":"test"}}' \
+  http://$SATELLITE_1_ENDPOINT/write
 
-```bash
-# Performance tests
-./scripts/performance-test.sh
+# Read from local EFS
+curl "http://$SATELLITE_1_ENDPOINT/read?filename=test/sample.json&from=local"
 
-# Cross-account functionality tests
-./scripts/test-cross-account-access.sh
+# Read from CoreBank EFS (cross-account)
+curl "http://$SATELLITE_1_ENDPOINT/read?filename=test/sample.json&from=corebank"
 
-# Dual-write pattern tests
-./scripts/test-dual-write.sh
+# List files
+curl "http://$SATELLITE_1_ENDPOINT/list?mount=local&path=test"
+
+# Run automated test suite
+curl -X POST http://$SATELLITE_1_ENDPOINT/test
 ```
 
 ## 📁 Project Structure
