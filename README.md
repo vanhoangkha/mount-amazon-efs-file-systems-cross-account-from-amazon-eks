@@ -11,32 +11,23 @@ A comprehensive solution for mounting Amazon EFS file systems across AWS account
 
 This solution implements a **dual-write pattern** where satellite applications write data to both local EFS storage and a shared CoreBank EFS across AWS accounts, ensuring data synchronization with sub-minute recovery times.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Cross-Account EFS Architecture                │
-│                         (ap-southeast-1)                       │
-└─────────────────────────────────────────────────────────────────┘
+### High-Level Architecture
 
-┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐
-│  CoreBank Acc    │    │ Satellite Acc 1  │    │ Satellite Acc 2  │
-│  (111111111111)  │    │  (222222222222)  │    │  (333333333333)  │
-│                  │    │                  │    │                  │
-│ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌──────────────┐ │
-│ │ EKS CoreBank │ │    │ │ EKS Satellite│ │    │ │ EKS Satellite│ │
-│ │   Cluster    │ │    │ │   Cluster    │ │    │ │   Cluster    │ │
-│ └──────────────┘ │    │ └──────────────┘ │    │ └──────────────┘ │
-│                  │    │                  │    │                  │
-│ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌──────────────┐ │
-│ │ EFS CoreBank │◄┼────┼─┤ EFS Mount    │ │    │ │ EFS Mount    │ │
-│ │  (Shared)    │ │    │ │ (Cross-Acc)  │ │    │ │ (Cross-Acc)  │ │
-│ └──────────────┘ │    │ └──────────────┘ │    │ └──────────────┘ │
-│                  │    │ ┌──────────────┐ │    │ ┌──────────────┐ │
-│ ┌──────────────┐ │    │ │ EFS Local    │ │    │ │ EFS Local    │ │
-│ │ RDS Primary  │ │    │ │              │ │    │ │              │ │
-│ │   Multi-AZ   │ │    │ └──────────────┘ │    │ └──────────────┘ │
-│ └──────────────┘ │    └──────────────────┘    └──────────────────┘
-└──────────────────┘
-```
+![Cross-Account EFS Architecture](architecture/diagrams/banking-cross-account-same-region.png)
+
+*Figure 1: Cross-Account EFS Architecture showing the dual-write pattern between CoreBank and Satellite accounts*
+
+### Network Architecture
+
+![Network Architecture](architecture/diagrams/banking-network-cross-account.png)
+
+*Figure 2: Network topology with VPC peering connections and security group configurations*
+
+### Security Architecture
+
+![Security Architecture](architecture/diagrams/banking-security-cross-account.png)
+
+*Figure 3: Cross-account security model with IAM roles and access controls*
 
 ### Key Features
 

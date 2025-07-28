@@ -32,51 +32,17 @@ This document provides a comprehensive overview of the cross-account Amazon EFS 
 
 ## High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    Banking Cross-Account Architecture            │
-│                         (ap-southeast-1)                       │
-└─────────────────────────────────────────────────────────────────┘
+![Cross-Account EFS Architecture](../../architecture/diagrams/banking-cross-account-same-region.png)
 
-                              ┌─────────────────┐
-                              │   Route53 DNS   │
-                              │  Health Checks  │
-                              └─────────────────┘
-                                       │
-                              ┌─────────────────┐
-                              │  CloudFront CDN │
-                              │  WAF Protection │
-                              └─────────────────┘
-                                       │
-        ┌──────────────────────────────┼──────────────────────────────┐
-        │                              │                              │
-┌───────▼──────┐              ┌────────▼────────┐              ┌─────▼──────┐
-│ CoreBank Acc │              │ Satellite Acc 1 │              │Satellite   │
-│(111111111111)│              │ (222222222222)  │              │Acc 2       │
-│              │              │                 │              │(3333333333)│
-│┌────────────┐│              │┌───────────────┐│              │┌──────────┐│
-││EKS CoreBank││              ││EKS Satellite-1││              ││EKS       ││
-││  Cluster   ││              ││   Cluster     ││              ││Satellite-││
-││            ││              ││               ││              ││2 Cluster ││
-│└────────────┘│              │└───────────────┘│              │└──────────┘│
-│              │              │                 │              │            │
-│┌────────────┐│    ┌─────────┤┌───────────────┐│              │┌──────────┐│
-││EFS CoreBank│◄────┤Cross-   ││EFS Mount      ││              ││EFS Mount ││
-││ (Shared)   ││    │Account  ││(Cross-Account)││              ││(Cross-   ││
-││            ││    │Access   │└───────────────┘│              ││Account)  ││
-│└────────────┘│    └─────────┤┌───────────────┐│              │└──────────┘│
-│              │              ││EFS Local-1    ││              │┌──────────┐│
-│┌────────────┐│              ││               ││              ││EFS       ││
-││RDS Primary ││              │└───────────────┘│              ││Local-2   ││
-││  Multi-AZ  ││              └─────────────────┘              │└──────────┘│
-│└────────────┘│                                               └────────────┘
-│              │
-│┌────────────┐│
-││ElastiCache ││
-││   Redis    ││
-│└────────────┘│
-└──────────────┘
-```
+*Figure 1: Banking Cross-Account Architecture showing the complete infrastructure across three AWS accounts in ap-southeast-1 region*
+
+The architecture consists of three main components:
+
+1. **CoreBank Account**: Central hub containing shared EFS, RDS database, and ElastiCache
+2. **Satellite Account 1**: Cards and payments services with dual EFS mounts
+3. **Satellite Account 2**: Loans and deposits services with dual EFS mounts
+
+Each satellite account implements a dual-write pattern where applications write to both local EFS (for performance) and CoreBank EFS (for data synchronization).
 
 ## Component Architecture
 
@@ -143,42 +109,24 @@ Each satellite account has two EFS mount points:
 
 ## Network Architecture
 
+## Network Architecture
+
+![Network Architecture](../../architecture/diagrams/banking-network-cross-account.png)
+
+*Figure 2: Network topology showing VPC peering connections, subnet design, and cross-account connectivity*
+
 ### VPC Design
 
-```
-CoreBank VPC (10.0.0.0/16)
-├── Public Subnets
-│   ├── 10.0.1.0/24 (AZ-1a) - NAT Gateway, ALB
-│   ├── 10.0.2.0/24 (AZ-1b) - NAT Gateway, ALB
-│   └── 10.0.3.0/24 (AZ-1c) - NAT Gateway, ALB
-├── Private App Subnets
-│   ├── 10.0.11.0/24 (AZ-1a) - EKS Nodes
-│   ├── 10.0.12.0/24 (AZ-1b) - EKS Nodes
-│   └── 10.0.13.0/24 (AZ-1c) - EKS Nodes
-├── Private DB Subnets
-│   ├── 10.0.21.0/24 (AZ-1a) - RDS, ElastiCache
-│   ├── 10.0.22.0/24 (AZ-1b) - RDS, ElastiCache
-│   └── 10.0.23.0/24 (AZ-1c) - RDS, ElastiCache
-└── EFS Subnets
-    ├── 10.0.31.0/24 (AZ-1a) - EFS Mount Targets
-    ├── 10.0.32.0/24 (AZ-1b) - EFS Mount Targets
-    └── 10.0.33.0/24 (AZ-1c) - EFS Mount Targets
+The network architecture implements a hub-and-spoke model with VPC peering:
 
-Satellite-1 VPC (10.1.0.0/16)
-├── Public Subnets: 10.1.1.0/24, 10.1.2.0/24
-├── Private Subnets: 10.1.11.0/24, 10.1.12.0/24
-└── EFS Subnets: 10.1.31.0/24, 10.1.32.0/24
+- **CoreBank VPC (10.0.0.0/16)**: Central hub with multi-tier subnet design
+- **Satellite-1 VPC (10.1.0.0/16)**: Cards and payments services network
+- **Satellite-2 VPC (10.2.0.0/16)**: Loans and deposits services network
 
-Satellite-2 VPC (10.2.0.0/16)
-├── Public Subnets: 10.2.1.0/24, 10.2.2.0/24
-├── Private Subnets: 10.2.11.0/24, 10.2.12.0/24
-└── EFS Subnets: 10.2.31.0/24, 10.2.32.0/24
-```
-
-### VPC Peering
+### Connectivity Model
 
 ```
-Peering Connections:
+VPC Peering Connections:
 - CoreBank VPC ↔ Satellite-1 VPC
 - CoreBank VPC ↔ Satellite-2 VPC
 
@@ -251,7 +199,23 @@ Route Tables:
 
 ## Security Architecture
 
+## Security Architecture
+
+![Security Architecture](../../architecture/diagrams/banking-security-cross-account.png)
+
+*Figure 3: Cross-account security model showing IAM roles, EFS access points, and security controls*
+
 ### Cross-Account Access Model
+
+The security architecture implements a zero-trust model with multiple layers of access control:
+
+1. **Network Security**: VPC isolation with security groups and NACLs
+2. **Identity Management**: Cross-account IAM roles with least privilege
+3. **Data Protection**: EFS access points for granular file system access
+4. **Encryption**: End-to-end encryption using AWS KMS
+5. **Monitoring**: Comprehensive audit logging and real-time monitoring
+
+### Security Controls
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
