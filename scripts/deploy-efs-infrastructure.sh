@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Deploy EFS Infrastructure for Cross-Account Testing
+# Deploy EFS Infrastructure for Cross-Account Testing (Single CoreBank EFS)
 set -e
 
 # Load configuration
@@ -185,93 +185,90 @@ EOF
     log "✓ CoreBank EFS deployment completed"
 }
 
-# Deploy Satellite EFS
-deploy_satellite_efs() {
+# Configure Satellite Account for Cross-Account EFS Access
+configure_satellite_account() {
     local account_id=$1
     local account_name=$2
     
-    log "Deploying $account_name EFS..."
+    log "Configuring $account_name for cross-account EFS access..."
     
     # Switch to satellite account
     export AWS_PROFILE="$account_name"
     
-    # Create local EFS file system
-    info "Creating $account_name local EFS file system"
-    EFS_LOCAL_ID=$(aws efs create-file-system \
-        --creation-token "$account_name-local-efs-$(date +%s)" \
-        --performance-mode generalPurpose \
-        --throughput-mode provisioned \
-        --provisioned-throughput-in-mibps $EFS_SATELLITE_THROUGHPUT \
-        --encrypted \
-        --tags Key=Name,Value="$account_name-Local-EFS" Key=Environment,Value=test \
-        --region $AWS_REGION \
-        --query 'FileSystemId' \
-        --output text)
+    # Create IAM role for cross-account EFS access
+    info "Creating cross-account EFS access role"
     
-    info "$account_name Local EFS created: $EFS_LOCAL_ID"
-    
-    # Wait for EFS to be available
-    aws efs wait file-system-available --file-system-id $EFS_LOCAL_ID --region $AWS_REGION
-    
-    # Get VPC and subnet information
-    VPC_ID=$(aws ec2 describe-vpcs \
-        --filters "Name=tag:Name,Values=*$account_name*" "Name=state,Values=available" \
-        --query 'Vpcs[0].VpcId' \
-        --output text \
-        --region $AWS_REGION)
-    
-    if [ "$VPC_ID" = "None" ] || [ -z "$VPC_ID" ]; then
-        warn "$account_name VPC not found, using default VPC"
-        VPC_ID=$(aws ec2 describe-vpcs \
-            --filters "Name=is-default,Values=true" \
-            --query 'Vpcs[0].VpcId' \
-            --output text \
-            --region $AWS_REGION)
-    fi
-    
-    # Get subnets
-    SUBNET_IDS=$(aws ec2 describe-subnets \
-        --filters "Name=vpc-id,Values=$VPC_ID" "Name=state,Values=available" \
-        --query 'Subnets[*].SubnetId' \
-        --output text \
-        --region $AWS_REGION)
-    
-    # Create security group for local EFS
-    info "Creating local EFS security group"
-    EFS_LOCAL_SG_ID=$(aws ec2 create-security-group \
-        --group-name "efs-$account_name-local-sg" \
-        --description "Security group for $account_name local EFS" \
-        --vpc-id $VPC_ID \
-        --region $AWS_REGION \
-        --query 'GroupId' \
-        --output text)
-    
-    # Add NFS rule to security group
-    aws ec2 authorize-security-group-ingress \
-        --group-id $EFS_LOCAL_SG_ID \
-        --protocol tcp \
-        --port 2049 \
-        --cidr 10.0.0.0/8 \
-        --region $AWS_REGION
-    
-    # Create mount targets for local EFS
-    info "Creating local EFS mount targets"
-    for subnet_id in $SUBNET_IDS; do
-        aws efs create-mount-target \
-            --file-system-id $EFS_LOCAL_ID \
-            --subnet-id $subnet_id \
-            --security-groups $EFS_LOCAL_SG_ID \
-            --region $AWS_REGION || true
-    done
-    
-    # Save outputs
-    cat > "${PROJECT_ROOT}/$account_name-efs.env" << EOF
-EFS_LOCAL_ID=$EFS_LOCAL_ID
-EFS_LOCAL_SG_ID=$EFS_LOCAL_SG_ID
-VPC_ID=$VPC_ID
+    # Create trust policy
+    cat > /tmp/trust-policy-$account_name.json << EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Service": "eks.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole"
+        },
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::$account_id:root"
+            },
+            "Action": "sts:AssumeRole"
+        }
+    ]
+}
 EOF
     
-    log "✓ $account_name EFS deployment completed"
+    # Create EFS access policy
+    cat > /tmp/efs-policy-$account_name.json << EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientRootAccess",
+                "elasticfilesystem:DescribeFileSystems",
+                "elasticfilesystem:DescribeAccessPoints"
+            ],
+            "Resource": "*"
+        }
+    ]
+}
+EOF
+    
+    # Create IAM role
+    ROLE_ARN=$(aws iam create-role \
+        --role-name "$account_name-efs-cross-account-role" \
+        --assume-role-policy-document file:///tmp/trust-policy-$account_name.json \
+        --region $AWS_REGION \
+        --query 'Role.Arn' \
+        --output text 2>/dev/null || \
+        aws iam get-role \
+        --role-name "$account_name-efs-cross-account-role" \
+        --query 'Role.Arn' \
+        --output text)
+    
+    # Attach policy to role
+    aws iam put-role-policy \
+        --role-name "$account_name-efs-cross-account-role" \
+        --policy-name "EFSCrossAccountAccess" \
+        --policy-document file:///tmp/efs-policy-$account_name.json \
+        --region $AWS_REGION
+    
+    info "Cross-account role created: $ROLE_ARN"
+    
+    # Save outputs
+    cat > "${PROJECT_ROOT}/$account_name-config.env" << EOF
+CROSS_ACCOUNT_ROLE_ARN=$ROLE_ARN
+ACCOUNT_ID=$account_id
+EOF
+    
+    log "✓ $account_name cross-account configuration completed"
 }
 
 # Main function
@@ -281,22 +278,22 @@ main() {
     # Deploy CoreBank EFS
     deploy_corebank_efs
     
-    # Deploy Satellite EFS
-    deploy_satellite_efs "$SATELLITE1_ACCOUNT" "satellite-1"
-    deploy_satellite_efs "$SATELLITE2_ACCOUNT" "satellite-2"
+    # Configure Satellite Accounts
+    configure_satellite_account "$SATELLITE1_ACCOUNT" "satellite-1"
+    configure_satellite_account "$SATELLITE2_ACCOUNT" "satellite-2"
     
     # Combine all environment files
     cat "${PROJECT_ROOT}/corebank-efs.env" \
-        "${PROJECT_ROOT}/satellite-1-efs.env" \
-        "${PROJECT_ROOT}/satellite-2-efs.env" \
+        "${PROJECT_ROOT}/satellite-1-config.env" \
+        "${PROJECT_ROOT}/satellite-2-config.env" \
         > "${PROJECT_ROOT}/efs-infrastructure.env"
     
     log "🎉 EFS Infrastructure deployment completed successfully!"
     log ""
     log "Infrastructure created:"
     log "  CoreBank EFS: $(grep EFS_COREBANK_ID "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
-    log "  Satellite-1 Local EFS: $(grep EFS_LOCAL_ID "${PROJECT_ROOT}/satellite-1-efs.env" | cut -d'=' -f2)"
-    log "  Satellite-2 Local EFS: $(grep EFS_LOCAL_ID "${PROJECT_ROOT}/satellite-2-efs.env" | cut -d'=' -f2)"
+    log "  Satellite-1 Access Point: $(grep SATELLITE1_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
+    log "  Satellite-2 Access Point: $(grep SATELLITE2_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
     log ""
     log "Next steps:"
     log "1. Deploy EKS clusters: ./scripts/deploy-eks-clusters.sh"

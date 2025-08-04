@@ -53,11 +53,9 @@ test_health() {
             log "✓ $app_name health check passed"
             
             # Show EFS mount status
-            local local_healthy=$(cat /tmp/health_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['local_efs']['healthy'])" 2>/dev/null || echo "false")
             local corebank_healthy=$(cat /tmp/health_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['corebank_efs']['healthy'])" 2>/dev/null || echo "false")
             
             info "$app_name EFS status:"
-            info "  - Local EFS: $local_healthy"
             info "  - CoreBank EFS: $corebank_healthy"
             
             return 0
@@ -103,13 +101,11 @@ EOF
     
     if [ "$http_code" = "200" ]; then
         local success=$(cat /tmp/write_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
-        local local_success=$(cat /tmp/write_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['results']['local']['success'])" 2>/dev/null || echo "false")
-        local corebank_success=$(cat /tmp/write_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['results']['corebank']['success'])" 2>/dev/null || echo "false")
+        local result_success=$(cat /tmp/write_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['result']['success'])" 2>/dev/null || echo "false")
         
         info "$app_name write results (${duration}s):"
         info "  - Overall: $success"
-        info "  - Local EFS: $local_success"
-        info "  - CoreBank EFS: $corebank_success"
+        info "  - CoreBank EFS: $result_success"
         
         if [ "$success" = "True" ]; then
             log "✓ $app_name write test passed"
@@ -130,25 +126,24 @@ test_read() {
     local endpoint=$1
     local app_name=$2
     local filename=$3
-    local from_mount=$4
     
-    info "Testing $app_name read from $from_mount EFS..."
+    info "Testing $app_name read from CoreBank EFS..."
     
     local response=$(curl -s -w "%{http_code}" -o /tmp/read_response.json \
-        "http://$endpoint/read?filename=$filename&from=$from_mount")
+        "http://$endpoint/read?filename=$filename")
     local http_code="${response: -3}"
     
     if [ "$http_code" = "200" ]; then
         local success=$(cat /tmp/read_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
         if [ "$success" = "True" ]; then
-            log "✓ $app_name read from $from_mount EFS successful"
+            log "✓ $app_name read from CoreBank EFS successful"
             return 0
         else
-            warn "$app_name read from $from_mount EFS failed"
+            warn "$app_name read from CoreBank EFS failed"
             return 1
         fi
     else
-        warn "$app_name read from $from_mount EFS failed - HTTP $http_code"
+        warn "$app_name read from CoreBank EFS failed - HTTP $http_code"
         return 1
     fi
 }
@@ -157,26 +152,25 @@ test_read() {
 test_list() {
     local endpoint=$1
     local app_name=$2
-    local mount=$3
     
-    info "Testing $app_name list files from $mount EFS..."
+    info "Testing $app_name list files from CoreBank EFS..."
     
     local response=$(curl -s -w "%{http_code}" -o /tmp/list_response.json \
-        "http://$endpoint/list?mount=$mount&path=test")
+        "http://$endpoint/list?path=test")
     local http_code="${response: -3}"
     
     if [ "$http_code" = "200" ]; then
         local success=$(cat /tmp/list_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
         if [ "$success" = "True" ]; then
             local file_count=$(cat /tmp/list_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['total'])" 2>/dev/null || echo "0")
-            log "✓ $app_name list from $mount EFS successful ($file_count files)"
+            log "✓ $app_name list from CoreBank EFS successful ($file_count files)"
             return 0
         else
-            warn "$app_name list from $mount EFS failed"
+            warn "$app_name list from CoreBank EFS failed"
             return 1
         fi
     else
-        warn "$app_name list from $mount EFS failed - HTTP $http_code"
+        warn "$app_name list from CoreBank EFS failed - HTTP $http_code"
         return 1
     fi
 }
@@ -229,7 +223,7 @@ test_cross_account_consistency() {
         # Try to read from satellite-2 CoreBank mount
         if [ ! -z "$SATELLITE_2_ENDPOINT" ]; then
             info "Reading data from Satellite-2 CoreBank EFS..."
-            if test_read "$SATELLITE_2_ENDPOINT" "Satellite-2" "$filename" "corebank"; then
+            if test_read "$SATELLITE_2_ENDPOINT" "Satellite-2" "$filename"; then
                 log "✓ Cross-account data consistency test passed"
                 return 0
             else
@@ -308,7 +302,7 @@ main() {
         
         test_health "$COREBANK_ENDPOINT" "CoreBank" && test_results+=("CoreBank-Health: PASS") || test_results+=("CoreBank-Health: FAIL")
         test_write "$COREBANK_ENDPOINT" "CoreBank" "$test_id" && test_results+=("CoreBank-Write: PASS") || test_results+=("CoreBank-Write: FAIL")
-        test_list "$COREBANK_ENDPOINT" "CoreBank" "local" && test_results+=("CoreBank-List: PASS") || test_results+=("CoreBank-List: FAIL")
+        test_list "$COREBANK_ENDPOINT" "CoreBank" && test_results+=("CoreBank-List: PASS") || test_results+=("CoreBank-List: FAIL")
         test_automated_suite "$COREBANK_ENDPOINT" "CoreBank" && test_results+=("CoreBank-Suite: PASS") || test_results+=("CoreBank-Suite: FAIL")
         test_performance "$COREBANK_ENDPOINT" "CoreBank" 5 && test_results+=("CoreBank-Performance: PASS") || test_results+=("CoreBank-Performance: FAIL")
     fi
@@ -319,17 +313,15 @@ main() {
         
         test_health "$SATELLITE_1_ENDPOINT" "Satellite-1" && test_results+=("Satellite-1-Health: PASS") || test_results+=("Satellite-1-Health: FAIL")
         test_write "$SATELLITE_1_ENDPOINT" "Satellite-1" "$test_id" && test_results+=("Satellite-1-Write: PASS") || test_results+=("Satellite-1-Write: FAIL")
-        test_list "$SATELLITE_1_ENDPOINT" "Satellite-1" "local" && test_results+=("Satellite-1-List-Local: PASS") || test_results+=("Satellite-1-List-Local: FAIL")
-        test_list "$SATELLITE_1_ENDPOINT" "Satellite-1" "corebank" && test_results+=("Satellite-1-List-CoreBank: PASS") || test_results+=("Satellite-1-List-CoreBank: FAIL")
+        test_list "$SATELLITE_1_ENDPOINT" "Satellite-1" && test_results+=("Satellite-1-List: PASS") || test_results+=("Satellite-1-List: FAIL")
         test_automated_suite "$SATELLITE_1_ENDPOINT" "Satellite-1" && test_results+=("Satellite-1-Suite: PASS") || test_results+=("Satellite-1-Suite: FAIL")
         test_performance "$SATELLITE_1_ENDPOINT" "Satellite-1" 5 && test_results+=("Satellite-1-Performance: PASS") || test_results+=("Satellite-1-Performance: FAIL")
         
-        # Test reading from both mounts
+        # Test reading from CoreBank mount
         if [ -f /tmp/test_files_${test_id}.txt ]; then
             local test_file=$(head -n1 /tmp/test_files_${test_id}.txt)
             if [ ! -z "$test_file" ]; then
-                test_read "$SATELLITE_1_ENDPOINT" "Satellite-1" "$test_file" "local" && test_results+=("Satellite-1-Read-Local: PASS") || test_results+=("Satellite-1-Read-Local: FAIL")
-                test_read "$SATELLITE_1_ENDPOINT" "Satellite-1" "$test_file" "corebank" && test_results+=("Satellite-1-Read-CoreBank: PASS") || test_results+=("Satellite-1-Read-CoreBank: FAIL")
+                test_read "$SATELLITE_1_ENDPOINT" "Satellite-1" "$test_file" && test_results+=("Satellite-1-Read: PASS") || test_results+=("Satellite-1-Read: FAIL")
             fi
         fi
     fi
@@ -340,8 +332,7 @@ main() {
         
         test_health "$SATELLITE_2_ENDPOINT" "Satellite-2" && test_results+=("Satellite-2-Health: PASS") || test_results+=("Satellite-2-Health: FAIL")
         test_write "$SATELLITE_2_ENDPOINT" "Satellite-2" "$test_id" && test_results+=("Satellite-2-Write: PASS") || test_results+=("Satellite-2-Write: FAIL")
-        test_list "$SATELLITE_2_ENDPOINT" "Satellite-2" "local" && test_results+=("Satellite-2-List-Local: PASS") || test_results+=("Satellite-2-List-Local: FAIL")
-        test_list "$SATELLITE_2_ENDPOINT" "Satellite-2" "corebank" && test_results+=("Satellite-2-List-CoreBank: PASS") || test_results+=("Satellite-2-List-CoreBank: FAIL")
+        test_list "$SATELLITE_2_ENDPOINT" "Satellite-2" && test_results+=("Satellite-2-List: PASS") || test_results+=("Satellite-2-List: FAIL")
         test_automated_suite "$SATELLITE_2_ENDPOINT" "Satellite-2" && test_results+=("Satellite-2-Suite: PASS") || test_results+=("Satellite-2-Suite: FAIL")
         test_performance "$SATELLITE_2_ENDPOINT" "Satellite-2" 5 && test_results+=("Satellite-2-Performance: PASS") || test_results+=("Satellite-2-Performance: FAIL")
     fi

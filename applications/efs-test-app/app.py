@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Simple EFS Test Application
-Tests dual-write functionality to both local and cross-account EFS
+Tests CoreBank EFS functionality across accounts
 """
 
 import os
@@ -25,13 +25,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # Configuration
-LOCAL_EFS_PATH = os.getenv('LOCAL_EFS_PATH', '/mnt/efs-local')
 COREBANK_EFS_PATH = os.getenv('COREBANK_EFS_PATH', '/mnt/efs-corebank')
 APP_NAME = os.getenv('APP_NAME', 'efs-test-app')
-DUAL_WRITE_ENABLED = os.getenv('DUAL_WRITE_ENABLED', 'true').lower() == 'true'
 
 # Ensure directories exist
-Path(LOCAL_EFS_PATH).mkdir(parents=True, exist_ok=True)
 Path(COREBANK_EFS_PATH).mkdir(parents=True, exist_ok=True)
 
 # Thread pool for async operations
@@ -39,7 +36,6 @@ executor = ThreadPoolExecutor(max_workers=10)
 
 class EFSTestManager:
     def __init__(self):
-        self.local_path = Path(LOCAL_EFS_PATH)
         self.corebank_path = Path(COREBANK_EFS_PATH)
         self.stats = {
             'total_writes': 0,
@@ -52,11 +48,8 @@ class EFSTestManager:
         }
     
     def write_file(self, filename, content, metadata=None):
-        """Write file to both EFS mounts"""
-        results = {
-            'local': {'success': False, 'duration': 0, 'error': None},
-            'corebank': {'success': False, 'duration': 0, 'error': None}
-        }
+        """Write file to CoreBank EFS"""
+        result = {'success': False, 'duration': 0, 'error': None}
         
         # Prepare data
         data = {
@@ -67,67 +60,40 @@ class EFSTestManager:
         }
         json_data = json.dumps(data, indent=2)
         
-        # Write to local EFS
+        # Write to CoreBank EFS
         try:
             start_time = time.time()
-            local_file = self.local_path / filename
-            local_file.parent.mkdir(parents=True, exist_ok=True)
+            corebank_file = self.corebank_path / filename
+            corebank_file.parent.mkdir(parents=True, exist_ok=True)
             
-            with open(local_file, 'w') as f:
+            with open(corebank_file, 'w') as f:
                 f.write(json_data)
                 f.flush()
                 os.fsync(f.fileno())
             
-            results['local']['success'] = True
-            results['local']['duration'] = time.time() - start_time
-            logger.info(f"Successfully wrote to local EFS: {filename}")
+            result['success'] = True
+            result['duration'] = time.time() - start_time
+            logger.info(f"Successfully wrote to CoreBank EFS: {filename}")
             
         except Exception as e:
-            results['local']['error'] = str(e)
-            logger.error(f"Failed to write to local EFS: {e}")
-        
-        # Write to CoreBank EFS (if enabled)
-        if DUAL_WRITE_ENABLED:
-            try:
-                start_time = time.time()
-                corebank_file = self.corebank_path / filename
-                corebank_file.parent.mkdir(parents=True, exist_ok=True)
-                
-                with open(corebank_file, 'w') as f:
-                    f.write(json_data)
-                    f.flush()
-                    os.fsync(f.fileno())
-                
-                results['corebank']['success'] = True
-                results['corebank']['duration'] = time.time() - start_time
-                logger.info(f"Successfully wrote to CoreBank EFS: {filename}")
-                
-            except Exception as e:
-                results['corebank']['error'] = str(e)
-                logger.error(f"Failed to write to CoreBank EFS: {e}")
-        else:
-            results['corebank']['error'] = "Dual write disabled"
+            result['error'] = str(e)
+            logger.error(f"Failed to write to CoreBank EFS: {e}")
         
         # Update stats
         self.stats['total_writes'] += 1
-        if results['local']['success'] or results['corebank']['success']:
+        if result['success']:
             self.stats['successful_writes'] += 1
         else:
             self.stats['failed_writes'] += 1
         
-        return results
+        return result
     
-    def read_file(self, filename, from_mount='local'):
-        """Read file from specified EFS mount"""
+    def read_file(self, filename):
+        """Read file from CoreBank EFS"""
         self.stats['total_reads'] += 1
         
         try:
-            if from_mount == 'local':
-                file_path = self.local_path / filename
-            elif from_mount == 'corebank':
-                file_path = self.corebank_path / filename
-            else:
-                raise ValueError(f"Invalid mount: {from_mount}")
+            file_path = self.corebank_path / filename
             
             if not file_path.exists():
                 raise FileNotFoundError(f"File not found: {filename}")
@@ -139,36 +105,27 @@ class EFSTestManager:
             duration = time.time() - start_time
             self.stats['successful_reads'] += 1
             
-            logger.info(f"Successfully read from {from_mount} EFS: {filename}")
+            logger.info(f"Successfully read from CoreBank EFS: {filename}")
             
             return {
                 'success': True,
                 'content': json.loads(content),
-                'duration': duration,
-                'from_mount': from_mount
+                'duration': duration
             }
             
         except Exception as e:
             self.stats['failed_reads'] += 1
-            logger.error(f"Failed to read from {from_mount} EFS: {e}")
+            logger.error(f"Failed to read from CoreBank EFS: {e}")
             
             return {
                 'success': False,
-                'error': str(e),
-                'from_mount': from_mount
+                'error': str(e)
             }
     
-    def list_files(self, mount='local', path=''):
-        """List files in EFS mount"""
+    def list_files(self, path=''):
+        """List files in CoreBank EFS"""
         try:
-            if mount == 'local':
-                base_path = self.local_path
-            elif mount == 'corebank':
-                base_path = self.corebank_path
-            else:
-                raise ValueError(f"Invalid mount: {mount}")
-            
-            target_path = base_path / path if path else base_path
+            target_path = self.corebank_path / path if path else self.corebank_path
             
             if not target_path.exists():
                 return {'success': False, 'error': f"Path not found: {path}"}
@@ -184,23 +141,20 @@ class EFSTestManager:
             
             return {
                 'success': True,
-                'mount': mount,
                 'path': path,
                 'files': files,
                 'total': len(files)
             }
             
         except Exception as e:
-            logger.error(f"Failed to list files from {mount}: {e}")
+            logger.error(f"Failed to list files from CoreBank EFS: {e}")
             return {'success': False, 'error': str(e)}
     
     def health_check(self):
-        """Check health of both EFS mounts"""
+        """Check health of CoreBank EFS mount"""
         health = {
             'timestamp': datetime.now().isoformat(),
             'app_name': APP_NAME,
-            'dual_write_enabled': DUAL_WRITE_ENABLED,
-            'local_efs': self._check_mount_health(self.local_path, 'local'),
             'corebank_efs': self._check_mount_health(self.corebank_path, 'corebank'),
             'stats': self.stats.copy()
         }
@@ -209,10 +163,7 @@ class EFSTestManager:
         health['stats']['uptime_seconds'] = time.time() - self.stats['start_time']
         
         # Overall health
-        health['healthy'] = (
-            health['local_efs']['healthy'] and 
-            (health['corebank_efs']['healthy'] or not DUAL_WRITE_ENABLED)
-        )
+        health['healthy'] = health['corebank_efs']['healthy']
         
         return health
     
@@ -270,9 +221,7 @@ def home():
         'service': 'EFS Test Application',
         'version': '1.0.0',
         'app_name': APP_NAME,
-        'dual_write_enabled': DUAL_WRITE_ENABLED,
         'mount_points': {
-            'local': LOCAL_EFS_PATH,
             'corebank': COREBANK_EFS_PATH
         },
         'endpoints': {
@@ -302,11 +251,11 @@ def write_file():
         if not filename or not content:
             return jsonify({'error': 'filename and content are required'}), 400
         
-        results = efs_manager.write_file(filename, content, metadata)
+        result = efs_manager.write_file(filename, content, metadata)
         
         return jsonify({
             'success': True,
-            'results': results,
+            'result': result,
             'timestamp': datetime.now().isoformat()
         })
         
@@ -319,12 +268,11 @@ def read_file():
     """Read file from EFS"""
     try:
         filename = request.args.get('filename')
-        from_mount = request.args.get('from', 'local')
         
         if not filename:
             return jsonify({'error': 'filename parameter is required'}), 400
         
-        result = efs_manager.read_file(filename, from_mount)
+        result = efs_manager.read_file(filename)
         
         if result['success']:
             return jsonify(result)
@@ -339,10 +287,9 @@ def read_file():
 def list_files():
     """List files in EFS"""
     try:
-        mount = request.args.get('mount', 'local')
         path = request.args.get('path', '')
         
-        result = efs_manager.list_files(mount, path)
+        result = efs_manager.list_files(path)
         
         if result['success']:
             return jsonify(result)
@@ -383,13 +330,13 @@ def run_test():
         
         # Test 2: Read test files
         for i, test_result in enumerate(test_results):
-            if test_result['result']['local']['success']:
+            if test_result['result']['success']:
                 filename = test_result['filename']
-                read_result = efs_manager.read_file(filename, 'local')
+                read_result = efs_manager.read_file(filename)
                 test_results[i]['read_result'] = read_result
         
         # Test 3: List files
-        list_result = efs_manager.list_files('local', 'test')
+        list_result = efs_manager.list_files('test')
         
         return jsonify({
             'success': True,
@@ -404,8 +351,6 @@ def run_test():
 
 if __name__ == '__main__':
     logger.info(f"Starting EFS Test Application: {APP_NAME}")
-    logger.info(f"Local EFS Path: {LOCAL_EFS_PATH}")
     logger.info(f"CoreBank EFS Path: {COREBANK_EFS_PATH}")
-    logger.info(f"Dual Write Enabled: {DUAL_WRITE_ENABLED}")
     
     app.run(host='0.0.0.0', port=8080, debug=False)

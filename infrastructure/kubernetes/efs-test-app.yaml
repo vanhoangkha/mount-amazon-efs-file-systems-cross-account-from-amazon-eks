@@ -5,23 +5,7 @@ metadata:
   labels:
     name: efs-test
 ---
-apiVersion: storage.k8s.io/v1
-kind: StorageClass
-metadata:
-  name: efs-local-sc
-provisioner: efs.csi.aws.com
-parameters:
-  provisioningMode: efs-ap
-  fileSystemId: ${EFS_LOCAL_ID}
-  directoryPerms: "0755"
-mountOptions:
-  - nfsvers=4.1
-  - rsize=1048576
-  - wsize=1048576
-  - hard
-  - intr
-  - timeo=600
----
+
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -39,22 +23,7 @@ mountOptions:
   - intr
   - timeo=600
 ---
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: efs-local-pv
-spec:
-  capacity:
-    storage: 5Gi
-  volumeMode: Filesystem
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: efs-local-sc
-  csi:
-    driver: efs.csi.aws.com
-    volumeHandle: ${EFS_LOCAL_ID}
----
+
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -71,19 +40,7 @@ spec:
     driver: efs.csi.aws.com
     volumeHandle: ${EFS_COREBANK_ID}::${EFS_ACCESS_POINT_ID}
 ---
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: efs-local-pvc
-  namespace: efs-test
-spec:
-  accessModes:
-    - ReadWriteMany
-  storageClassName: efs-local-sc
-  resources:
-    requests:
-      storage: 5Gi
----
+
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -130,17 +87,11 @@ spec:
         - containerPort: 8080
           name: http
         env:
-        - name: LOCAL_EFS_PATH
-          value: "/mnt/efs-local"
         - name: COREBANK_EFS_PATH
           value: "/mnt/efs-corebank"
-        - name: DUAL_WRITE_ENABLED
-          value: "true"
         - name: APP_NAME
           value: "efs-test-app"
         volumeMounts:
-        - name: efs-local-storage
-          mountPath: /mnt/efs-local
         - name: efs-corebank-storage
           mountPath: /mnt/efs-corebank
         resources:
@@ -175,9 +126,6 @@ spec:
           timeoutSeconds: 3
           failureThreshold: 10
       volumes:
-      - name: efs-local-storage
-        persistentVolumeClaim:
-          claimName: efs-local-pvc
       - name: efs-corebank-storage
         persistentVolumeClaim:
           claimName: efs-corebank-pvc

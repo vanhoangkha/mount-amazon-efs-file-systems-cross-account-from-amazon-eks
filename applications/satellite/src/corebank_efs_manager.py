@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Dual Mount EFS Manager for Satellite Applications
-Handles dual-write operations to both local and cross-account EFS
+CoreBank EFS Manager for Satellite Applications
+Handles operations to shared CoreBank EFS across accounts
 """
 
 import os
@@ -42,15 +42,13 @@ class HealthStatus:
     mount_path: str
     error: Optional[str] = None
 
-class DualMountEFSManager:
-    """Manager for dual EFS mount points with banking-grade reliability"""
+class CoreBankEFSManager:
+    """Manager for CoreBank EFS mount with banking-grade reliability"""
     
     def __init__(self):
         # Configuration from environment
-        self.local_mount = Path(os.getenv('LOCAL_EFS_PATH', '/mnt/efs-local'))
         self.corebank_mount = Path(os.getenv('COREBANK_EFS_PATH', '/mnt/efs-corebank'))
-        self.sync_timeout = int(os.getenv('DUAL_WRITE_TIMEOUT', '60'))
-        self.dual_write_enabled = os.getenv('DUAL_WRITE_ENABLED', 'true').lower() == 'true'
+        self.write_timeout = int(os.getenv('WRITE_TIMEOUT', '30'))
         self.batch_size = int(os.getenv('BATCH_SIZE', '100'))
         self.buffer_size = int(os.getenv('BUFFER_SIZE', '1048576'))  # 1MB
         
@@ -72,46 +70,26 @@ class DualMountEFSManager:
         # Ensure directories exist
         self._ensure_directories()
         
-        logger.info(f"Initialized DualMountEFSManager:")
-        logger.info(f"  - Local EFS: {self.local_mount}")
+        logger.info(f"Initialized CoreBankEFSManager:")
         logger.info(f"  - CoreBank EFS: {self.corebank_mount}")
-        logger.info(f"  - Sync timeout: {self.sync_timeout}s")
-        logger.info(f"  - Dual write: {self.dual_write_enabled}")
+        logger.info(f"  - Write timeout: {self.write_timeout}s")
     
     def _ensure_directories(self):
         """Ensure mount point directories exist"""
         try:
-            self.local_mount.mkdir(parents=True, exist_ok=True)
             self.corebank_mount.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             logger.error(f"Failed to create mount directories: {e}")
             raise
     
     async def health_check(self) -> Dict[str, any]:
-        """Comprehensive health check for both mount points"""
+        """Health check for CoreBank EFS mount"""
         start_time = time.time()
         
-        # Check both mount points concurrently
-        local_task = asyncio.create_task(
-            self._check_mount_health(self.local_mount, "local")
-        )
-        corebank_task = asyncio.create_task(
-            self._check_mount_health(self.corebank_mount, "corebank")
-        )
-        
         try:
-            local_health, corebank_health = await asyncio.gather(
-                local_task, corebank_task, return_exceptions=True
-            )
+            corebank_health = await self._check_mount_health(self.corebank_mount, "corebank")
             
             # Handle exceptions
-            if isinstance(local_health, Exception):
-                local_health = HealthStatus(
-                    healthy=False, latency_ms=0, writable=False, 
-                    readable=False, mount_path=str(self.local_mount),
-                    error=str(local_health)
-                )
-            
             if isinstance(corebank_health, Exception):
                 corebank_health = HealthStatus(
                     healthy=False, latency_ms=0, writable=False,
@@ -119,21 +97,9 @@ class DualMountEFSManager:
                     error=str(corebank_health)
                 )
             
-            # Overall health status
-            overall_healthy = local_health.healthy and corebank_health.healthy
-            
             health_result = {
                 "timestamp": datetime.now().isoformat(),
-                "healthy": overall_healthy,
-                "dual_write_enabled": self.dual_write_enabled,
-                "local_efs": {
-                    "healthy": local_health.healthy,
-                    "latency_ms": local_health.latency_ms,
-                    "writable": local_health.writable,
-                    "readable": local_health.readable,
-                    "mount_path": local_health.mount_path,
-                    "error": local_health.error
-                },
+                "healthy": corebank_health.healthy,
                 "corebank_efs": {
                     "healthy": corebank_health.healthy,
                     "latency_ms": corebank_health.latency_ms,
@@ -158,8 +124,7 @@ class DualMountEFSManager:
             return {
                 "timestamp": datetime.now().isoformat(),
                 "healthy": False,
-                "error": str(e),
-                "dual_write_enabled": self.dual_write_enabled
+                "error": str(e)
             }
     
     async def _check_mount_health(self, mount_path: Path, mount_name: str) -> HealthStatus:
@@ -209,49 +174,25 @@ class DualMountEFSManager:
                 error=str(e)
             )
     
-    async def write_data(self, filename: str, data: str, metadata: Dict = None) -> Dict[str, WriteResult]:
+    async def write_data(self, filename: str, data: str, metadata: Dict = None) -> WriteResult:
         """
-        Dual-write data to both mount points with performance optimization
+        Write data to CoreBank EFS with performance optimization
         """
-        if not self.dual_write_enabled:
-            # Single write to local only
-            result = await self._write_to_mount(self.local_mount, filename, data, metadata)
-            return {
-                "local": result,
-                "corebank": WriteResult(success=False, duration=0, error="Dual write disabled")
-            }
-        
         start_time = time.time()
         self.metrics['total_writes'] += 1
         
         try:
-            # Start both writes concurrently
-            local_task = asyncio.create_task(
-                self._write_to_mount(self.local_mount, filename, data, metadata)
-            )
-            corebank_task = asyncio.create_task(
-                self._write_to_mount(self.corebank_mount, filename, data, metadata)
-            )
-            
-            # Wait for both writes with timeout
-            results = await asyncio.wait_for(
-                asyncio.gather(local_task, corebank_task, return_exceptions=True),
-                timeout=self.sync_timeout
+            # Write to CoreBank EFS with timeout
+            result = await asyncio.wait_for(
+                self._write_to_mount(self.corebank_mount, filename, data, metadata),
+                timeout=self.write_timeout
             )
             
             end_time = time.time()
             total_duration = end_time - start_time
             
-            # Process results
-            local_result = results[0] if not isinstance(results[0], Exception) else WriteResult(
-                success=False, duration=0, error=str(results[0])
-            )
-            corebank_result = results[1] if not isinstance(results[1], Exception) else WriteResult(
-                success=False, duration=0, error=str(results[1])
-            )
-            
             # Update metrics
-            if local_result.success or corebank_result.success:
+            if result.success:
                 self.metrics['successful_writes'] += 1
             else:
                 self.metrics['failed_writes'] += 1
@@ -263,33 +204,26 @@ class DualMountEFSManager:
             )
             
             # Log performance
-            logger.info(f"Dual write completed in {total_duration:.2f}s - "
-                       f"Local: {'✓' if local_result.success else '✗'}, "
-                       f"CoreBank: {'✓' if corebank_result.success else '✗'}")
+            logger.info(f"Write completed in {total_duration:.2f}s - "
+                       f"CoreBank: {'✓' if result.success else '✗'}")
             
             # Send performance metrics
-            await self._send_performance_metrics(total_duration, local_result.success, corebank_result.success)
+            await self._send_performance_metrics(total_duration, result.success)
             
-            return {"local": local_result, "corebank": corebank_result}
+            return result
             
         except asyncio.TimeoutError:
-            error_msg = f"Dual write timeout after {self.sync_timeout}s"
+            error_msg = f"Write timeout after {self.write_timeout}s"
             logger.error(error_msg)
             self.metrics['failed_writes'] += 1
             
-            return {
-                "local": WriteResult(success=False, duration=self.sync_timeout, error=error_msg),
-                "corebank": WriteResult(success=False, duration=self.sync_timeout, error=error_msg)
-            }
+            return WriteResult(success=False, duration=self.write_timeout, error=error_msg)
         except Exception as e:
-            error_msg = f"Dual write error: {e}"
+            error_msg = f"Write error: {e}"
             logger.error(error_msg)
             self.metrics['failed_writes'] += 1
             
-            return {
-                "local": WriteResult(success=False, duration=0, error=error_msg),
-                "corebank": WriteResult(success=False, duration=0, error=error_msg)
-            }
+            return WriteResult(success=False, duration=0, error=error_msg)
     
     async def _write_to_mount(self, mount_path: Path, filename: str, data: str, metadata: Dict = None) -> WriteResult:
         """Write data to a specific mount point with optimization"""
@@ -330,20 +264,13 @@ class DualMountEFSManager:
             logger.error(f"Write failed to {mount_path}: {e}")
             return WriteResult(success=False, duration=0, error=str(e))
     
-    async def read_data(self, filename: str, from_mount: str = "local") -> Tuple[bool, Optional[str], Optional[str]]:
+    async def read_data(self, filename: str) -> Tuple[bool, Optional[str], Optional[str]]:
         """
-        Read data from specified mount point
+        Read data from CoreBank EFS
         Returns: (success, data, error)
         """
         try:
-            if from_mount == "local":
-                mount_path = self.local_mount
-            elif from_mount == "corebank":
-                mount_path = self.corebank_mount
-            else:
-                return False, None, f"Invalid mount: {from_mount}"
-            
-            file_path = mount_path / filename
+            file_path = self.corebank_mount / filename
             
             if not file_path.exists():
                 return False, None, f"File not found: {filename}"
@@ -354,7 +281,7 @@ class DualMountEFSManager:
             return True, data, None
             
         except Exception as e:
-            logger.error(f"Read failed from {from_mount}: {e}")
+            logger.error(f"Read failed from CoreBank EFS: {e}")
             return False, None, str(e)
     
     async def batch_write(self, files: List[Tuple[str, str, Dict]]) -> Dict:
@@ -398,7 +325,7 @@ class DualMountEFSManager:
         try:
             results = await asyncio.wait_for(
                 asyncio.gather(*tasks, return_exceptions=True),
-                timeout=self.sync_timeout
+                timeout=self.write_timeout
             )
             
             successful = 0
@@ -409,11 +336,11 @@ class DualMountEFSManager:
                 if isinstance(result, Exception):
                     failed += 1
                     errors.append(str(result))
-                elif result.get("local", {}).get("success") or result.get("corebank", {}).get("success"):
+                elif result.success:
                     successful += 1
                 else:
                     failed += 1
-                    errors.append("Both local and corebank writes failed")
+                    errors.append("CoreBank write failed")
             
             return {
                 "successful": successful,
@@ -428,67 +355,53 @@ class DualMountEFSManager:
                 "errors": ["Batch timeout exceeded"]
             }
     
-    async def sync_missing_files(self) -> Dict[str, any]:
+    async def list_files(self, path: str = "") -> Dict[str, any]:
         """
-        Sync files from local to corebank (recovery function)
+        List files in CoreBank EFS
         """
         try:
             start_time = time.time()
-            synced_files = []
-            errors = []
+            target_path = self.corebank_mount / path if path else self.corebank_mount
             
-            # Get all files from local
-            local_files = []
-            for root, dirs, files in os.walk(self.local_mount):
-                for file in files:
-                    if not file.startswith('health_check_'):  # Skip health check files
-                        rel_path = os.path.relpath(os.path.join(root, file), self.local_mount)
-                        local_files.append(rel_path)
+            if not target_path.exists():
+                return {
+                    "success": False,
+                    "error": f"Path not found: {path}",
+                    "files": [],
+                    "total": 0
+                }
             
-            # Check and sync missing files
-            for rel_path in local_files:
-                local_file = self.local_mount / rel_path
-                corebank_file = self.corebank_mount / rel_path
-                
-                if not corebank_file.exists():
-                    try:
-                        # Read from local
-                        async with aiofiles.open(local_file, 'r') as f:
-                            data = await f.read()
-                        
-                        # Write to corebank
-                        corebank_file.parent.mkdir(parents=True, exist_ok=True)
-                        async with aiofiles.open(corebank_file, 'w', buffering=self.buffer_size) as f:
-                            await f.write(data)
-                            await f.fsync()
-                        
-                        synced_files.append(rel_path)
-                        
-                    except Exception as e:
-                        errors.append(f"{rel_path}: {str(e)}")
+            files = []
+            for item in target_path.iterdir():
+                if not item.name.startswith('health_check_'):  # Skip health check files
+                    files.append({
+                        "name": item.name,
+                        "type": "directory" if item.is_dir() else "file",
+                        "size": item.stat().st_size if item.is_file() else 0,
+                        "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat()
+                    })
             
             end_time = time.time()
             duration = end_time - start_time
             
             result = {
-                "success": len(errors) == 0,
+                "success": True,
                 "duration": duration,
-                "synced_files": len(synced_files),
-                "total_files": len(local_files),
-                "files_synced": synced_files,
-                "errors": errors
+                "path": path,
+                "files": files,
+                "total": len(files)
             }
             
-            logger.info(f"Sync completed: {len(synced_files)} files synced in {duration:.2f}s")
+            logger.info(f"Listed {len(files)} files in {duration:.2f}s")
             return result
             
         except Exception as e:
-            logger.error(f"Sync failed: {e}")
+            logger.error(f"List files failed: {e}")
             return {
                 "success": False,
                 "error": str(e),
-                "synced_files": 0,
-                "total_files": 0
+                "files": [],
+                "total": 0
             }
     
     async def _send_health_metrics(self, health_data: Dict):
@@ -496,19 +409,9 @@ class DualMountEFSManager:
         try:
             metrics = [
                 {
-                    'MetricName': 'LocalEFSHealth',
-                    'Value': 1 if health_data['local_efs']['healthy'] else 0,
-                    'Unit': 'Count'
-                },
-                {
                     'MetricName': 'CoreBankEFSHealth',
                     'Value': 1 if health_data['corebank_efs']['healthy'] else 0,
                     'Unit': 'Count'
-                },
-                {
-                    'MetricName': 'LocalEFSLatency',
-                    'Value': health_data['local_efs']['latency_ms'],
-                    'Unit': 'Milliseconds'
                 },
                 {
                     'MetricName': 'CoreBankEFSLatency',
@@ -525,28 +428,23 @@ class DualMountEFSManager:
         except Exception as e:
             logger.error(f"Failed to send health metrics: {e}")
     
-    async def _send_performance_metrics(self, duration: float, local_success: bool, corebank_success: bool):
+    async def _send_performance_metrics(self, duration: float, success: bool):
         """Send performance metrics to CloudWatch"""
         try:
             metrics = [
                 {
-                    'MetricName': 'DualWriteLatency',
+                    'MetricName': 'WriteLatency',
                     'Value': duration * 1000,  # Convert to milliseconds
                     'Unit': 'Milliseconds'
                 },
                 {
-                    'MetricName': 'DualWriteSuccessRate',
-                    'Value': 100 if (local_success or corebank_success) else 0,
+                    'MetricName': 'WriteSuccessRate',
+                    'Value': 100 if success else 0,
                     'Unit': 'Percent'
                 },
                 {
-                    'MetricName': 'LocalWriteSuccess',
-                    'Value': 1 if local_success else 0,
-                    'Unit': 'Count'
-                },
-                {
                     'MetricName': 'CoreBankWriteSuccess',
-                    'Value': 1 if corebank_success else 0,
+                    'Value': 1 if success else 0,
                     'Unit': 'Count'
                 }
             ]
@@ -566,4 +464,4 @@ class DualMountEFSManager:
     async def cleanup(self):
         """Cleanup resources"""
         self.executor.shutdown(wait=True)
-        logger.info("DualMountEFSManager cleanup completed")
+        logger.info("CoreBankEFSManager cleanup completed")
