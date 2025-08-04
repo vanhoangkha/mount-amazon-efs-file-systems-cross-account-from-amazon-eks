@@ -41,11 +41,16 @@ check_prerequisites() {
     log "Checking prerequisites..."
     
     # Check required tools
-    for tool in aws kubectl eksctl docker; do
+    for tool in aws kubectl eksctl; do
         if ! command -v $tool &> /dev/null; then
             error "$tool is required but not installed"
         fi
     done
+    
+    # Check Docker separately with more helpful message
+    if ! command -v docker &> /dev/null; then
+        error "Docker is required but not installed. Install with: curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh"
+    fi
     
     # Check AWS CLI configuration
     if ! aws sts get-caller-identity &> /dev/null; then

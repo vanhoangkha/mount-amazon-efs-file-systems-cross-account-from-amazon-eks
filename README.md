@@ -45,6 +45,13 @@ This solution implements a **shared storage pattern** where satellite applicatio
 - **eksctl** (v0.147+)
 - **Docker** (for building images)
 
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+```
+
 ### AWS Account Setup
 
 Configure three AWS accounts:
