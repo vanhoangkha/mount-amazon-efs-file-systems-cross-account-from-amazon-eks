@@ -6,7 +6,7 @@
 set -e
 
 # Script configuration
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="."
 
 
 # Load configuration

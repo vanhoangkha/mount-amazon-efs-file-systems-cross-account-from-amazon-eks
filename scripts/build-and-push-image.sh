@@ -4,7 +4,7 @@
 set -e
 
 # Load configuration
-PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="."
 
 source "${PROJECT_ROOT}/scripts/config.sh"
 
