@@ -157,7 +157,7 @@ main() {
     fi
     
     # Cleanup in reverse order
-    for account in "corebank" "satellite-1" "satellite-2"; do
+    for account in "corebank" "satellite_1" "satellite_2"; do
         log "Cleaning up $account account..."
         
         cleanup_eks_cluster "$account"
