@@ -250,13 +250,8 @@ main() {
     deploy_to_corebank
     
     # Deploy to Satellites
-    source "${PROJECT_ROOT}/satellite-1-efs.env"
-    SATELLITE1_LOCAL_EFS=$EFS_LOCAL_ID
-    deploy_to_satellite "$SATELLITE1_ACCOUNT" "satellite-1" "$SATELLITE1_ECR_URI" "$SATELLITE1_ACCESS_POINT" "$SATELLITE1_LOCAL_EFS"
-    
-    source "${PROJECT_ROOT}/satellite-2-efs.env"
-    SATELLITE2_LOCAL_EFS=$EFS_LOCAL_ID
-    deploy_to_satellite "$SATELLITE2_ACCOUNT" "satellite-2" "$SATELLITE2_ECR_URI" "$SATELLITE2_ACCESS_POINT" "$SATELLITE2_LOCAL_EFS"
+    deploy_to_satellite "$SATELLITE1_ACCOUNT" "satellite-1" "$SATELLITE1_ECR_URI" "$SATELLITE1_ACCESS_POINT" "dummy-local-efs"
+    deploy_to_satellite "$SATELLITE2_ACCOUNT" "satellite-2" "$SATELLITE2_ECR_URI" "$SATELLITE2_ACCESS_POINT" "dummy-local-efs"
     
     # Wait for load balancers to be ready
     info "Waiting for load balancers to be ready..."
@@ -274,7 +269,7 @@ main() {
     log "  Health check: curl http://\$ENDPOINT/health"
     log "  Write test: curl -X POST -H 'Content-Type: application/json' -d '{\"filename\":\"test.json\",\"content\":\"test data\"}' http://\$ENDPOINT/write"
     log "  Read test: curl 'http://\$ENDPOINT/read?filename=test.json'"
-    log "  List files: curl 'http://\$ENDPOINT/list?mount=local'"
+    log "  List files: curl 'http://\$ENDPOINT/list'"
     log "  Run test suite: curl -X POST http://\$ENDPOINT/test"
 }
 

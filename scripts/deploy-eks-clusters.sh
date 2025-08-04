@@ -118,29 +118,15 @@ EOF
     info "Verifying cluster nodes"
     kubectl get nodes --context "$account_name-cluster"
     
-    # Install AWS Load Balancer Controller
-    info "Installing AWS Load Balancer Controller"
-    
-    # Create IAM role for AWS Load Balancer Controller
+    # Create service account for EFS CSI driver
+    info "Creating service account for EFS CSI driver"
     eksctl create iamserviceaccount \
         --cluster="$account_name-cluster" \
         --namespace=kube-system \
-        --name=aws-load-balancer-controller \
-        --role-name "AmazonEKSLoadBalancerControllerRole-$account_name" \
-        --attach-policy-arn=arn:aws:iam::aws:policy/ElasticLoadBalancingFullAccess \
+        --name=efs-csi-controller-sa \
+        --attach-policy-arn=arn:aws:iam::aws:policy/AmazonElasticFileSystemClientFullAccess \
         --approve \
         --region=$AWS_REGION
-    
-    # Install AWS Load Balancer Controller using Helm
-    helm repo add eks https://aws.github.io/eks-charts
-    helm repo update
-    
-    helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
-        -n kube-system \
-        --set clusterName="$account_name-cluster" \
-        --set serviceAccount.create=false \
-        --set serviceAccount.name=aws-load-balancer-controller \
-        --kube-context "$account_name-cluster"
     
     log "✓ EKS cluster $account_name-cluster deployed successfully"
 }
@@ -152,10 +138,6 @@ main() {
     # Check prerequisites
     if ! command -v eksctl &> /dev/null; then
         error "eksctl is required but not installed"
-    fi
-    
-    if ! command -v helm &> /dev/null; then
-        error "helm is required but not installed"
     fi
     
     # Deploy CoreBank EKS cluster

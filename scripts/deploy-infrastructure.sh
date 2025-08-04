@@ -41,21 +41,18 @@ check_prerequisites() {
     log "Checking prerequisites..."
     
     # Check required tools
-    for tool in aws kubectl eksctl; do
+    for tool in aws kubectl eksctl docker; do
         if ! command -v $tool &> /dev/null; then
             error "$tool is required but not installed"
         fi
     done
     
-    # Check Docker separately with more helpful message
-    if ! command -v docker &> /dev/null; then
-        error "Docker is required but not installed. Install with: curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh"
-    fi
-    
-    # Check AWS CLI configuration
-    if ! aws sts get-caller-identity &> /dev/null; then
-        error "AWS CLI not configured or credentials invalid"
-    fi
+    # Check AWS CLI profiles
+    for profile in corebank satellite-1 satellite-2; do
+        if ! aws sts get-caller-identity --profile $profile &> /dev/null; then
+            error "AWS profile '$profile' not configured or credentials invalid"
+        fi
+    done
     
     # Check environment variables
     if [[ -z "$COREBANK_ACCOUNT" || -z "$SATELLITE1_ACCOUNT" || -z "$SATELLITE2_ACCOUNT" ]]; then

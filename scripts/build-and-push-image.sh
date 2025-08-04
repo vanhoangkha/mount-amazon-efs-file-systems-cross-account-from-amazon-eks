@@ -129,7 +129,7 @@ main() {
     
     # Check prerequisites
     if ! command -v docker &> /dev/null; then
-        error "Docker is required but not installed"
+        error "Docker is required but not installed. Install with: curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh"
     fi
     
     if ! command -v aws &> /dev/null; then
