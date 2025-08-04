@@ -41,7 +41,7 @@ check_prerequisites() {
     log "Checking prerequisites..."
     
     # Check required tools
-    for tool in aws kubectl eksctl terraform; do
+    for tool in aws kubectl eksctl docker; do
         if ! command -v $tool &> /dev/null; then
             error "$tool is required but not installed"
         fi
@@ -72,21 +72,19 @@ main() {
     check_prerequisites
     
     # Deploy infrastructure components
-    "${PROJECT_ROOT}/scripts/01-deploy-networking.sh"
-    "${PROJECT_ROOT}/scripts/02-deploy-eks-clusters.sh"
-    "${PROJECT_ROOT}/scripts/03-deploy-efs-storage.sh"
-    "${PROJECT_ROOT}/scripts/04-setup-cross-account-access.sh"
-    "${PROJECT_ROOT}/scripts/05-deploy-applications.sh"
-    "${PROJECT_ROOT}/scripts/06-setup-monitoring.sh"
+    "${PROJECT_ROOT}/scripts/deploy-eks-clusters.sh"
+    "${PROJECT_ROOT}/scripts/deploy-efs-infrastructure.sh"
+    "${PROJECT_ROOT}/scripts/build-and-push-image.sh"
+    "${PROJECT_ROOT}/scripts/deploy-efs-test-app.sh"
     
-    # Run health checks
-    "${PROJECT_ROOT}/scripts/health-check.sh"
+    # Run tests
+    "${PROJECT_ROOT}/scripts/test-efs-cross-account.sh"
     
     log "🎉 Cross-Account EFS Infrastructure Deployment Completed Successfully!"
     log ""
     log "Next Steps:"
-    log "1. Run performance tests: ./scripts/performance-test.sh"
-    log "2. Verify dual-write functionality: ./scripts/test-dual-write.sh"
+    log "1. Check application endpoints in app-endpoints.env"
+    log "2. Run additional tests: ./scripts/test-efs-cross-account.sh"
     log "3. Check monitoring dashboards in CloudWatch"
     log "4. Review security configurations"
 }
