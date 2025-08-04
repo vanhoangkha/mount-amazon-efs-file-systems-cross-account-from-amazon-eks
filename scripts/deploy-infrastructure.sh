@@ -48,7 +48,7 @@ check_prerequisites() {
     done
     
     # Check AWS CLI profiles
-    for profile in corebank satellite-1 satellite-2; do
+    for profile in corebank satellite_1 satellite_2; do
         if ! aws sts get-caller-identity --profile $profile &> /dev/null; then
             error "AWS profile '$profile' not configured or credentials invalid"
         fi

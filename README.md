@@ -85,15 +85,15 @@ Configure three AWS accounts:
 
 ```bash
 aws configure --profile corebank
-aws configure --profile satellite-1
-aws configure --profile satellite-2
+aws configure --profile satellite_1
+aws configure --profile satellite_2
 ```
 
 Verify access:
 ```bash
 aws sts get-caller-identity --profile corebank
-aws sts get-caller-identity --profile satellite-1
-aws sts get-caller-identity --profile satellite-2
+aws sts get-caller-identity --profile satellite_1
+aws sts get-caller-identity --profile satellite_2
 ```
 
 ### Environment Configuration
@@ -253,8 +253,8 @@ Organization Root
 ### Network Architecture
 
 - **CoreBank VPC**: 10.0.0.0/16
-- **Satellite-1 VPC**: 10.1.0.0/16  
-- **Satellite-2 VPC**: 10.2.0.0/16
+- **Satellite_1 VPC**: 10.1.0.0/16  
+- **Satellite_2 VPC**: 10.2.0.0/16
 - **VPC Peering**: Enables cross-account EFS access
 - **Security Groups**: Restrict EFS access to NFS port 2049
 
