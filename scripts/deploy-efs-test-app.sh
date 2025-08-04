@@ -209,8 +209,8 @@ test_efs_functionality() {
     fi
     
     # Test Satellite apps
-    for account in "SATELLITE_1" "SATELLITE_2"; do
-        endpoint_var="${account}_ENDPOINT"
+    for account in "SATELLITE-1" "SATELLITE-2"; do
+        endpoint_var="${account//-/_}_ENDPOINT"
         endpoint=${!endpoint_var}
         
         if [ ! -z "$endpoint" ]; then
@@ -250,8 +250,8 @@ main() {
     deploy_to_corebank
     
     # Deploy to Satellites
-    deploy_to_satellite "$SATELLITE1_ACCOUNT" "satellite_1" "$SATELLITE1_ECR_URI" "$SATELLITE1_ACCESS_POINT" "dummy-local-efs"
-    deploy_to_satellite "$SATELLITE2_ACCOUNT" "satellite_2" "$SATELLITE2_ECR_URI" "$SATELLITE2_ACCESS_POINT" "dummy-local-efs"
+    deploy_to_satellite "$SATELLITE1_ACCOUNT" "satellite-1" "$SATELLITE1_ECR_URI" "$SATELLITE1_ACCESS_POINT" "dummy-local-efs"
+    deploy_to_satellite "$SATELLITE2_ACCOUNT" "satellite-2" "$SATELLITE2_ECR_URI" "$SATELLITE2_ACCESS_POINT" "dummy-local-efs"
     
     # Wait for load balancers to be ready
     info "Waiting for load balancers to be ready..."

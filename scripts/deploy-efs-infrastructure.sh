@@ -279,13 +279,13 @@ main() {
     deploy_corebank_efs
     
     # Configure Satellite Accounts
-    configure_satellite_account "$SATELLITE1_ACCOUNT" "satellite_1"
-    configure_satellite_account "$SATELLITE2_ACCOUNT" "satellite_2"
+    configure_satellite_account "$SATELLITE1_ACCOUNT" "satellite-1"
+    configure_satellite_account "$SATELLITE2_ACCOUNT" "satellite-2"
     
     # Combine all environment files
     cat "${PROJECT_ROOT}/corebank-efs.env" \
-        "${PROJECT_ROOT}/satellite_1-config.env" \
-        "${PROJECT_ROOT}/satellite_2-config.env" \
+        "${PROJECT_ROOT}/satellite-1-config.env" \
+        "${PROJECT_ROOT}/satellite-2-config.env" \
         > "${PROJECT_ROOT}/efs-infrastructure.env"
     
     log "🎉 EFS Infrastructure deployment completed successfully!"

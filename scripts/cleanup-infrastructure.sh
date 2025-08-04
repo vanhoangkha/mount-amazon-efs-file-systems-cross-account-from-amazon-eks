@@ -33,6 +33,33 @@ info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}"
 }
 
+# Cleanup CloudFormation stacks
+cleanup_cloudformation() {
+    local account_name=$1
+    
+    log "Cleaning up CloudFormation stacks for $account_name account..."
+    
+    export AWS_PROFILE="$account_name"
+    
+    # Get all stacks related to eksctl
+    local stack_names=$(aws cloudformation list-stacks --region $AWS_REGION --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query "StackSummaries[?contains(StackName, 'eksctl-$account_name-cluster')].StackName" --output text)
+    
+    for stack_name in $stack_names; do
+        info "Deleting CloudFormation stack: $stack_name"
+        aws cloudformation delete-stack --stack-name "$stack_name" --region $AWS_REGION || true
+    done
+    
+    # Wait for stacks to be deleted
+    if [ ! -z "$stack_names" ]; then
+        info "Waiting for CloudFormation stacks to be deleted..."
+        for stack_name in $stack_names; do
+            aws cloudformation wait stack-delete-complete --stack-name "$stack_name" --region $AWS_REGION || true
+        done
+    fi
+    
+    log "✓ CloudFormation stacks cleaned up for $account_name"
+}
+
 # Cleanup EKS cluster
 cleanup_eks_cluster() {
     local account_name=$1
@@ -157,10 +184,11 @@ main() {
     fi
     
     # Cleanup in reverse order
-    for account in "corebank" "satellite_1" "satellite_2"; do
+    for account in "corebank" "satellite-1" "satellite-2"; do
         log "Cleaning up $account account..."
         
         cleanup_eks_cluster "$account"
+        cleanup_cloudformation "$account"
         cleanup_efs "$account"
         cleanup_ecr "$account"
         cleanup_iam "$account"
@@ -177,6 +205,7 @@ main() {
     log ""
     log "All resources have been deleted:"
     log "  - EKS clusters and node groups"
+    log "  - CloudFormation stacks"
     log "  - EFS file systems and access points"
     log "  - ECR repositories"
     log "  - IAM roles and policies"
