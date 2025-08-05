@@ -3,10 +3,7 @@
 # Deploy EFS Infrastructure for Cross-Account Testing (Single CoreBank EFS)
 set -e
 
-# Load configuration
-PROJECT_ROOT="."
-
-source "${PROJECT_ROOT}/scripts/config.sh"
+source ./scripts/config.sh
 
 # Colors for output
 RED='\033[0;31m'

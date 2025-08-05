@@ -5,12 +5,7 @@
 
 set -e
 
-# Script configuration
-PROJECT_ROOT="."
-
-
-# Load configuration
-source "${PROJECT_ROOT}/scripts/config.sh"
+source ./scripts/config.sh
 
 # Colors for output
 RED='\033[0;31m'

@@ -3,10 +3,7 @@
 # Test EFS Cross-Account Functionality
 set -e
 
-# Load configuration
-PROJECT_ROOT="."
-
-source "${PROJECT_ROOT}/scripts/config.sh"
+source ./scripts/config.sh
 
 # Load application endpoints
 if [ -f "${PROJECT_ROOT}/app-endpoints.env" ]; then
