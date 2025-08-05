@@ -208,28 +208,26 @@ test_automated_suite() {
 test_cross_account_consistency() {
     info "Testing cross-account data consistency..."
     
-    # Write data from satellite-1
-    if [ ! -z "$SATELLITE_1_ENDPOINT" ]; then
+    # Write data from satellite
+    if [ ! -z "$SATELLITE_ENDPOINT" ] && [ ! -z "$COREBANK_ENDPOINT" ]; then
         local filename="test/consistency_test_$(date +%s).json"
         local content="Cross-account consistency test data"
         
-        info "Writing data from Satellite-1..."
+        info "Writing data from Satellite..."
         curl -s -X POST -H "Content-Type: application/json" \
             -d "{\"filename\":\"$filename\",\"content\":\"$content\"}" \
-            "http://$SATELLITE_1_ENDPOINT/write" > /tmp/consistency_write.json
+            "http://$SATELLITE_ENDPOINT/write" > /tmp/consistency_write.json
         
         sleep 5  # Wait for sync
         
-        # Try to read from satellite-2 CoreBank mount
-        if [ ! -z "$SATELLITE_2_ENDPOINT" ]; then
-            info "Reading data from Satellite-2 CoreBank EFS..."
-            if test_read "$SATELLITE_2_ENDPOINT" "Satellite-2" "$filename"; then
-                log "✓ Cross-account data consistency test passed"
-                return 0
-            else
-                warn "Cross-account data consistency test failed"
-                return 1
-            fi
+        # Try to read from CoreBank
+        info "Reading data from CoreBank EFS..."
+        if test_read "$COREBANK_ENDPOINT" "CoreBank" "$filename"; then
+            log "✓ Cross-account data consistency test passed"
+            return 0
+        else
+            warn "Cross-account data consistency test failed"
+            return 1
         fi
     fi
     
@@ -289,7 +287,7 @@ main() {
     log "Starting EFS Cross-Account Functionality Tests"
     
     # Check if endpoints are available
-    if [ -z "$COREBANK_ENDPOINT" ] && [ -z "$SATELLITE_1_ENDPOINT" ] && [ -z "$SATELLITE_2_ENDPOINT" ]; then
+    if [ -z "$COREBANK_ENDPOINT" ] && [ -z "$SATELLITE_ENDPOINT" ]; then
         error "No application endpoints found. Deploy applications first with ./scripts/deploy-efs-test-app.sh"
     fi
     
@@ -307,34 +305,23 @@ main() {
         test_performance "$COREBANK_ENDPOINT" "CoreBank" 5 && test_results+=("CoreBank-Performance: PASS") || test_results+=("CoreBank-Performance: FAIL")
     fi
     
-    # Test Satellite-1 application
-    if [ ! -z "$SATELLITE_1_ENDPOINT" ]; then
-        log "Testing Satellite-1 Application ($SATELLITE_1_ENDPOINT)"
+    # Test Satellite application
+    if [ ! -z "$SATELLITE_ENDPOINT" ]; then
+        log "Testing Satellite Application ($SATELLITE_ENDPOINT)"
         
-        test_health "$SATELLITE_1_ENDPOINT" "Satellite-1" && test_results+=("Satellite-1-Health: PASS") || test_results+=("Satellite-1-Health: FAIL")
-        test_write "$SATELLITE_1_ENDPOINT" "Satellite-1" "$test_id" && test_results+=("Satellite-1-Write: PASS") || test_results+=("Satellite-1-Write: FAIL")
-        test_list "$SATELLITE_1_ENDPOINT" "Satellite-1" && test_results+=("Satellite-1-List: PASS") || test_results+=("Satellite-1-List: FAIL")
-        test_automated_suite "$SATELLITE_1_ENDPOINT" "Satellite-1" && test_results+=("Satellite-1-Suite: PASS") || test_results+=("Satellite-1-Suite: FAIL")
-        test_performance "$SATELLITE_1_ENDPOINT" "Satellite-1" 5 && test_results+=("Satellite-1-Performance: PASS") || test_results+=("Satellite-1-Performance: FAIL")
+        test_health "$SATELLITE_ENDPOINT" "Satellite" && test_results+=("Satellite-Health: PASS") || test_results+=("Satellite-Health: FAIL")
+        test_write "$SATELLITE_ENDPOINT" "Satellite" "$test_id" && test_results+=("Satellite-Write: PASS") || test_results+=("Satellite-Write: FAIL")
+        test_list "$SATELLITE_ENDPOINT" "Satellite" && test_results+=("Satellite-List: PASS") || test_results+=("Satellite-List: FAIL")
+        test_automated_suite "$SATELLITE_ENDPOINT" "Satellite" && test_results+=("Satellite-Suite: PASS") || test_results+=("Satellite-Suite: FAIL")
+        test_performance "$SATELLITE_ENDPOINT" "Satellite" 5 && test_results+=("Satellite-Performance: PASS") || test_results+=("Satellite-Performance: FAIL")
         
         # Test reading from CoreBank mount
         if [ -f /tmp/test_files_${test_id}.txt ]; then
             local test_file=$(head -n1 /tmp/test_files_${test_id}.txt)
             if [ ! -z "$test_file" ]; then
-                test_read "$SATELLITE_1_ENDPOINT" "Satellite-1" "$test_file" && test_results+=("Satellite-1-Read: PASS") || test_results+=("Satellite-1-Read: FAIL")
+                test_read "$SATELLITE_ENDPOINT" "Satellite" "$test_file" && test_results+=("Satellite-Read: PASS") || test_results+=("Satellite-Read: FAIL")
             fi
         fi
-    fi
-    
-    # Test Satellite-2 application
-    if [ ! -z "$SATELLITE_2_ENDPOINT" ]; then
-        log "Testing Satellite-2 Application ($SATELLITE_2_ENDPOINT)"
-        
-        test_health "$SATELLITE_2_ENDPOINT" "Satellite-2" && test_results+=("Satellite-2-Health: PASS") || test_results+=("Satellite-2-Health: FAIL")
-        test_write "$SATELLITE_2_ENDPOINT" "Satellite-2" "$test_id" && test_results+=("Satellite-2-Write: PASS") || test_results+=("Satellite-2-Write: FAIL")
-        test_list "$SATELLITE_2_ENDPOINT" "Satellite-2" && test_results+=("Satellite-2-List: PASS") || test_results+=("Satellite-2-List: FAIL")
-        test_automated_suite "$SATELLITE_2_ENDPOINT" "Satellite-2" && test_results+=("Satellite-2-Suite: PASS") || test_results+=("Satellite-2-Suite: FAIL")
-        test_performance "$SATELLITE_2_ENDPOINT" "Satellite-2" 5 && test_results+=("Satellite-2-Performance: PASS") || test_results+=("Satellite-2-Performance: FAIL")
     fi
     
     # Test cross-account consistency

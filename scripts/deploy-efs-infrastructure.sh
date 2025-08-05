@@ -109,30 +109,20 @@ deploy_corebank_efs() {
             --region $AWS_REGION || true
     done
     
-    # Create access points for satellite accounts
-    info "Creating access points for satellite accounts"
+    # Create access point for satellite account
+    info "Creating access point for satellite account"
     
-    SATELLITE1_ACCESS_POINT=$(aws efs create-access-point \
+    SATELLITE_ACCESS_POINT=$(aws efs create-access-point \
         --file-system-id $EFS_COREBANK_ID \
         --posix-user Uid=1001,Gid=1001 \
-        --root-directory Path="/satellite1",CreationInfo='{OwnerUid=1001,OwnerGid=1001,Permissions=755}' \
-        --tags Key=Name,Value=Satellite1-AccessPoint \
+        --root-directory Path="/satellite",CreationInfo='{OwnerUid=1001,OwnerGid=1001,Permissions=755}' \
+        --tags Key=Name,Value=Satellite-AccessPoint \
         --region $AWS_REGION \
         --query 'AccessPointId' \
         --output text)
     
-    SATELLITE2_ACCESS_POINT=$(aws efs create-access-point \
-        --file-system-id $EFS_COREBANK_ID \
-        --posix-user Uid=1002,Gid=1002 \
-        --root-directory Path="/satellite2",CreationInfo='{OwnerUid=1002,OwnerGid=1002,Permissions=755}' \
-        --tags Key=Name,Value=Satellite2-AccessPoint \
-        --region $AWS_REGION \
-        --query 'AccessPointId' \
-        --output text)
-    
-    info "Access points created:"
-    info "  Satellite-1: $SATELLITE1_ACCESS_POINT"
-    info "  Satellite-2: $SATELLITE2_ACCESS_POINT"
+    info "Access point created:"
+    info "  Satellite: $SATELLITE_ACCESS_POINT"
     
     # Create EFS resource policy for cross-account access
     info "Creating EFS resource policy for cross-account access"
@@ -145,8 +135,7 @@ deploy_corebank_efs() {
             "Effect": "Allow",
             "Principal": {
                 "AWS": [
-                    "arn:aws:iam::$SATELLITE1_ACCOUNT:root",
-                    "arn:aws:iam::$SATELLITE2_ACCOUNT:root"
+                    "arn:aws:iam::$SATELLITE_ACCOUNT:root"
                 ]
             },
             "Action": [
@@ -158,8 +147,7 @@ deploy_corebank_efs() {
             "Condition": {
                 "StringEquals": {
                     "elasticfilesystem:AccessPointArn": [
-                        "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$SATELLITE1_ACCESS_POINT",
-                        "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$SATELLITE2_ACCESS_POINT"
+                        "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$SATELLITE_ACCESS_POINT"
                     ]
                 }
             }
@@ -176,8 +164,7 @@ EOF
     # Save outputs
     cat > "${PROJECT_ROOT}/corebank-efs.env" << EOF
 EFS_COREBANK_ID=$EFS_COREBANK_ID
-SATELLITE1_ACCESS_POINT=$SATELLITE1_ACCESS_POINT
-SATELLITE2_ACCESS_POINT=$SATELLITE2_ACCESS_POINT
+SATELLITE_ACCESS_POINT=$SATELLITE_ACCESS_POINT
 EFS_SG_ID=$EFS_SG_ID
 VPC_ID=$VPC_ID
 EOF
@@ -278,22 +265,19 @@ main() {
     # Deploy CoreBank EFS
     deploy_corebank_efs
     
-    # Configure Satellite Accounts
-    configure_satellite_account "$SATELLITE1_ACCOUNT" "satellite-1"
-    configure_satellite_account "$SATELLITE2_ACCOUNT" "satellite-2"
+    # Configure Satellite Account
+    configure_satellite_account "$SATELLITE_ACCOUNT" "satellite"
     
     # Combine all environment files
     cat "${PROJECT_ROOT}/corebank-efs.env" \
-        "${PROJECT_ROOT}/satellite-1-config.env" \
-        "${PROJECT_ROOT}/satellite-2-config.env" \
+        "${PROJECT_ROOT}/satellite-config.env" \
         > "${PROJECT_ROOT}/efs-infrastructure.env"
     
     log "🎉 EFS Infrastructure deployment completed successfully!"
     log ""
     log "Infrastructure created:"
     log "  CoreBank EFS: $(grep EFS_COREBANK_ID "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
-    log "  Satellite-1 Access Point: $(grep SATELLITE1_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
-    log "  Satellite-2 Access Point: $(grep SATELLITE2_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
+    log "  Satellite Access Point: $(grep SATELLITE_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
     log ""
     log "Next steps:"
     log "1. Deploy EKS clusters: ./scripts/deploy-eks-clusters.sh"

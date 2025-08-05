@@ -12,15 +12,18 @@ This solution implements a **shared storage pattern** where satellite applicatio
 
 ### High-Level Architecture
 
-![Cross-Account EFS Architecture](generated-diagrams/cross-account-efs-architecture.png)
+![Cross-Account EFS Architecture](generated-diagrams/cross-account-efs-simplified.png)
 
-*Figure 1: Cross-account EFS architecture with shared CoreBank storage*
+*Figure 1: Simplified cross-account EFS architecture with CoreBank and one satellite account*
+
+![Network Flow Diagram](generated-diagrams/network-flow-simplified.png)
+
+*Figure 2: Network flow between CoreBank and satellite account for EFS access*
 
 ### Architecture Components
 
 - **CoreBank Account**: Central hub with shared EFS and primary database
-- **Satellite Account 1**: Cards & Payments services with cross-account EFS access
-- **Satellite Account 2**: Loans & Deposits services with cross-account EFS access
+- **Satellite Account**: Cards & Payments services with cross-account EFS access
 - **Cross-Account EFS Access**: Secure mounting of CoreBank EFS from satellite accounts
 - **Test Applications**: Lightweight Python Flask apps for validation and testing
 
@@ -77,23 +80,20 @@ This solution implements a **shared storage pattern** where satellite applicatio
 
 ### AWS Account Setup
 
-Configure three AWS accounts:
+Configure two AWS accounts:
 
 1. **CoreBank Account**: Primary account (e.g., 111111111111)
-2. **Satellite Account 1**: Cards/Payments (e.g., 222222222222)  
-3. **Satellite Account 2**: Loans/Deposits (e.g., 333333333333)
+2. **Satellite Account**: Cards/Payments (e.g., 222222222222)
 
 ```bash
 aws configure --profile corebank
-aws configure --profile satellite-1
-aws configure --profile satellite-2
+aws configure --profile satellite
 ```
 
 Verify access:
 ```bash
 aws sts get-caller-identity --profile corebank
-aws sts get-caller-identity --profile satellite-1
-aws sts get-caller-identity --profile satellite-2
+aws sts get-caller-identity --profile satellite
 ```
 
 ### Environment Configuration
@@ -106,8 +106,7 @@ Edit `.env` with your account IDs and preferences:
 ```bash
 # AWS Account Configuration
 COREBANK_ACCOUNT=111111111111
-SATELLITE1_ACCOUNT=222222222222
-SATELLITE2_ACCOUNT=333333333333
+SATELLITE_ACCOUNT=222222222222
 AWS_REGION=ap-southeast-1
 
 # EKS Configuration
@@ -240,11 +239,7 @@ Organization Root
 │   ├── Shared EFS Storage
 │   ├── EKS Cluster (3 nodes, c5.xlarge)
 │   └── Test Application
-├── Satellite Account 1 (222222222222)
-│   ├── EKS Cluster (2 nodes, c5.large)
-│   ├── Cross-account EFS access
-│   └── Test Application
-└── Satellite Account 2 (333333333333)
+└── Satellite Account (222222222222)
     ├── EKS Cluster (2 nodes, c5.large)
     ├── Cross-account EFS access
     └── Test Application
@@ -253,8 +248,7 @@ Organization Root
 ### Network Architecture
 
 - **CoreBank VPC**: 10.0.0.0/16
-- **Satellite-1 VPC**: 10.1.0.0/16  
-- **Satellite-2 VPC**: 10.2.0.0/16
+- **Satellite VPC**: 10.1.0.0/16
 - **VPC Peering**: Enables cross-account EFS access
 - **Security Groups**: Restrict EFS access to NFS port 2049
 
@@ -282,8 +276,7 @@ Modify `scripts/config.sh` for your environment:
 ```bash
 # AWS Account Configuration
 export COREBANK_ACCOUNT="111111111111"
-export SATELLITE1_ACCOUNT="222222222222"
-export SATELLITE2_ACCOUNT="333333333333"
+export SATELLITE_ACCOUNT="222222222222"
 export AWS_REGION="ap-southeast-1"
 
 # EKS Configuration

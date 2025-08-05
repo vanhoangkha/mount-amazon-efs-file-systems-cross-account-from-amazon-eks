@@ -90,6 +90,8 @@ nodeGroups:
         - arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy
         - arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
         - arn:aws:iam::aws:policy/AmazonElasticFileSystemClientFullAccess
+        - arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
+        - arn:aws:iam::aws:policy/AmazonEKSClusterPolicy
 
 addons:
   - name: vpc-cni
@@ -143,16 +145,14 @@ main() {
     # Deploy CoreBank EKS cluster
     deploy_eks_cluster "$COREBANK_ACCOUNT" "corebank" "$COREBANK_NODE_TYPE" 2 6 3
     
-    # Deploy Satellite EKS clusters
-    deploy_eks_cluster "$SATELLITE1_ACCOUNT" "satellite-1" "$SATELLITE_NODE_TYPE" 1 4 2
-    deploy_eks_cluster "$SATELLITE2_ACCOUNT" "satellite-2" "$SATELLITE_NODE_TYPE" 1 4 2
+    # Deploy Satellite EKS cluster
+    deploy_eks_cluster "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_NODE_TYPE" 1 4 2
     
     log "🎉 EKS Clusters deployment completed successfully!"
     log ""
     log "Clusters created:"
     log "  CoreBank: corebank-cluster"
-    log "  Satellite-1: satellite-1-cluster"
-    log "  Satellite-2: satellite-2-cluster"
+    log "  Satellite: satellite-cluster"
     log ""
     log "Next steps:"
     log "1. Deploy EFS infrastructure: ./scripts/deploy-efs-infrastructure.sh"

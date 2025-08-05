@@ -48,14 +48,14 @@ check_prerequisites() {
     done
     
     # Check AWS CLI profiles
-    for profile in corebank satellite-1 satellite-2; do
+    for profile in corebank satellite; do
         if ! aws sts get-caller-identity --profile $profile &> /dev/null; then
             error "AWS profile '$profile' not configured or credentials invalid"
         fi
     done
     
     # Check environment variables
-    if [[ -z "$COREBANK_ACCOUNT" || -z "$SATELLITE1_ACCOUNT" || -z "$SATELLITE2_ACCOUNT" ]]; then
+    if [[ -z "$COREBANK_ACCOUNT" || -z "$SATELLITE_ACCOUNT" ]]; then
         error "Account IDs must be set in environment variables"
     fi
     
@@ -67,8 +67,7 @@ main() {
     log "Starting Cross-Account EFS Infrastructure Deployment"
     log "Region: $AWS_REGION"
     log "CoreBank Account: $COREBANK_ACCOUNT"
-    log "Satellite Account 1: $SATELLITE1_ACCOUNT"
-    log "Satellite Account 2: $SATELLITE2_ACCOUNT"
+    log "Satellite Account: $SATELLITE_ACCOUNT"
     
     # Check prerequisites
     check_prerequisites

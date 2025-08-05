@@ -139,23 +139,20 @@ main() {
     # Build and push for CoreBank account
     COREBANK_ECR_URI=$(build_and_push_for_account "$COREBANK_ACCOUNT" "corebank")
     
-    # Build and push for Satellite accounts
-    SATELLITE1_ECR_URI=$(build_and_push_for_account "$SATELLITE1_ACCOUNT" "satellite-1")
-    SATELLITE2_ECR_URI=$(build_and_push_for_account "$SATELLITE2_ACCOUNT" "satellite-2")
+    # Build and push for Satellite account
+    SATELLITE_ECR_URI=$(build_and_push_for_account "$SATELLITE_ACCOUNT" "satellite")
     
     # Save ECR URIs to file for deployment scripts
     cat > "${PROJECT_ROOT}/ecr-uris.env" << EOF
 COREBANK_ECR_URI=$COREBANK_ECR_URI
-SATELLITE1_ECR_URI=$SATELLITE1_ECR_URI
-SATELLITE2_ECR_URI=$SATELLITE2_ECR_URI
+SATELLITE_ECR_URI=$SATELLITE_ECR_URI
 EOF
     
     log "🎉 Build and push completed successfully!"
     log ""
     log "ECR URIs:"
     log "  CoreBank: $COREBANK_ECR_URI"
-    log "  Satellite-1: $SATELLITE1_ECR_URI"
-    log "  Satellite-2: $SATELLITE2_ECR_URI"
+    log "  Satellite: $SATELLITE_ECR_URI"
     log ""
     log "Next steps:"
     log "1. Deploy EFS infrastructure: ./scripts/deploy-efs-infrastructure.sh"

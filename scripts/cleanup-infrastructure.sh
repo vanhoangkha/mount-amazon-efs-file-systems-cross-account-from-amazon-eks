@@ -74,9 +74,21 @@ cleanup_eks_cluster() {
         return 0
     fi
     
-    # Delete cluster
+    # Update kubeconfig
+    aws eks update-kubeconfig --name "$account_name-cluster" --region $AWS_REGION || true
+    
+    # Force delete system pods that can't be evicted
+    info "Force deleting system pods..."
+    kubectl delete pods --all -n kube-system --force --grace-period=0 || true
+    kubectl delete pods --all -n efs-test --force --grace-period=0 || true
+    
+    # Delete applications first
+    info "Deleting applications..."
+    kubectl delete namespace efs-test --force --grace-period=0 || true
+    
+    # Delete cluster with force flag
     info "Deleting EKS cluster $account_name-cluster"
-    eksctl delete cluster --name "$account_name-cluster" --region $AWS_REGION --wait
+    eksctl delete cluster --name "$account_name-cluster" --region $AWS_REGION --force --disable-nodegroup-eviction
     
     log "✓ EKS cluster $account_name-cluster deleted"
 }
@@ -184,7 +196,7 @@ main() {
     fi
     
     # Cleanup in reverse order
-    for account in "corebank" "satellite-1" "satellite-2"; do
+    for account in "corebank" "satellite"; do
         log "Cleaning up $account account..."
         
         cleanup_eks_cluster "$account"

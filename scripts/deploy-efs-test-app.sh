@@ -208,24 +208,19 @@ test_efs_functionality() {
             "http://$COREBANK_ENDPOINT/write" || warn "CoreBank write test failed"
     fi
     
-    # Test Satellite apps
-    for account in "SATELLITE-1" "SATELLITE-2"; do
-        endpoint_var="${account//-/_}_ENDPOINT"
-        endpoint=${!endpoint_var}
+    # Test Satellite app
+    if [ ! -z "$SATELLITE_ENDPOINT" ]; then
+        info "Testing SATELLITE app health"
+        curl -f "http://$SATELLITE_ENDPOINT/health" || warn "SATELLITE health check failed"
         
-        if [ ! -z "$endpoint" ]; then
-            info "Testing $account app health"
-            curl -f "http://$endpoint/health" || warn "$account health check failed"
-            
-            info "Running $account EFS test"
-            curl -X POST -H "Content-Type: application/json" \
-                -d "{\"filename\":\"test/$account-test.json\",\"content\":\"$account test data\",\"metadata\":{\"source\":\"$account\"}}" \
-                "http://$endpoint/write" || warn "$account write test failed"
-            
-            info "Running $account automated test suite"
-            curl -X POST "http://$endpoint/test" || warn "$account test suite failed"
-        fi
-    done
+        info "Running SATELLITE EFS test"
+        curl -X POST -H "Content-Type: application/json" \
+            -d '{"filename":"test/SATELLITE-test.json","content":"SATELLITE test data","metadata":{"source":"SATELLITE"}}' \
+            "http://$SATELLITE_ENDPOINT/write" || warn "SATELLITE write test failed"
+        
+        info "Running SATELLITE automated test suite"
+        curl -X POST "http://$SATELLITE_ENDPOINT/test" || warn "SATELLITE test suite failed"
+    fi
     
     log "✓ EFS functionality testing completed"
 }
@@ -249,9 +244,8 @@ main() {
     # Deploy to CoreBank
     deploy_to_corebank
     
-    # Deploy to Satellites
-    deploy_to_satellite "$SATELLITE1_ACCOUNT" "satellite-1" "$SATELLITE1_ECR_URI" "$SATELLITE1_ACCESS_POINT" "dummy-local-efs"
-    deploy_to_satellite "$SATELLITE2_ACCOUNT" "satellite-2" "$SATELLITE2_ECR_URI" "$SATELLITE2_ACCESS_POINT" "dummy-local-efs"
+    # Deploy to Satellite
+    deploy_to_satellite "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_ECR_URI" "$SATELLITE_ACCESS_POINT" "dummy-local-efs"
     
     # Wait for load balancers to be ready
     info "Waiting for load balancers to be ready..."
