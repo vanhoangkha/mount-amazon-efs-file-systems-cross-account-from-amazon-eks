@@ -1,40 +1,16 @@
 #!/bin/bash
 
-# Deploy EFS Test Application to EKS Clusters
+# Deploy EFS Test Applications to EKS Clusters
 set -e
 
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
-# Load EFS infrastructure info
-if [ -f "${PRO    # Create policy for EFS cross-account access
-    cat > /tmp/$account_name-efs-policy.json << EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "elasticfilesystem:ClientMount",
-                "elasticfilesystem:ClientWrite",
-                "elasticfilesystem:ClientRootAccess",
-                "elasticfilesystem:DescribeFileSystems",
-                "elasticfilesystem:DescribeAccessPoints"
-            ],
-            "Resource": [
-                "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:file-system/$EFS_COREBANK_ID",
-                "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$access_point_id"
-            ]
-        }
-    ]
-}
-EOFastructure.env" ]; then
+# Source infrastructure environment files if they exist
+if [ -f "${PROJECT_ROOT}/efs-infrastructure.env" ]; then
     source "${PROJECT_ROOT}/efs-infrastructure.env"
-fi
-
-# Load ECR URIs
-if [ -f "${PROJECT_ROOT}/ecr-uris.env" ]; then
-    source "${PROJECT_ROOT}/ecr-uris.env"
+elif [ -f "${PROJECT_ROOT}/corebank-efs.env" ]; then
+    source "${PROJECT_ROOT}/corebank-efs.env"
 fi
 
 # Colors for output
@@ -61,213 +37,136 @@ info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}"
 }
 
-# Deploy to CoreBank cluster
-deploy_to_corebank() {
-    log "Deploying EFS Test App to CoreBank cluster..."
+# Substitute environment variables in Kubernetes manifest
+substitute_variables() {
+    local input_file=$1
+    local output_file=$2
     
-    # Switch to CoreBank account and update kubeconfig
-    export AWS_PROFILE="corebank"
-    aws eks update-kubeconfig --region $AWS_REGION --name corebank-cluster --alias corebank-cluster
-    
-    # Create EFS CSI driver service account if not exists
-    info "Ensuring EFS CSI driver service account exists"
-    eksctl create iamserviceaccount \
-        --cluster="corebank-cluster" \
-        --namespace=kube-system \
-        --name=efs-csi-controller-sa \
-        --attach-policy-arn=arn:aws:iam::aws:policy/AmazonElasticFileSystemClientFullAccess \
-        --approve \
-        --override-existing-serviceaccounts \
-        --region=$AWS_REGION || info "Service account already exists"
-    
-    # Create temporary manifest with substituted values
-    info "Creating CoreBank deployment manifest"
-    cat "${PROJECT_ROOT}/infrastructure/kubernetes/efs-test-app.yaml" | \
-    sed "s/\${EFS_COREBANK_ID}/$EFS_COREBANK_ID/g" | \
-    sed "s/\${SATELLITE_ACCESS_POINT}//g" | \
-    sed "s/\${EFS_VOLUME_HANDLE}/$EFS_COREBANK_ID/g" | \
-    sed "s/\${ECR_REPOSITORY_URI}/${COREBANK_ECR_URI//\//\\/}/g" | \
-    sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/arn:aws:iam::$COREBANK_ACCOUNT:role\/EKSServiceRole/g" | \
-    sed "s/\${AWS_REGION}/$AWS_REGION/g" \
-    > /tmp/corebank-efs-test-app.yaml
-    
-    # Apply manifest
-    info "Applying CoreBank deployment"
-    kubectl apply -f /tmp/corebank-efs-test-app.yaml --context corebank-cluster
-    
-    # Wait for deployment
-    info "Waiting for CoreBank deployment to be ready"
-    kubectl wait --for=condition=available --timeout=300s deployment/efs-test-app -n efs-test --context corebank-cluster
-    
-    # Get service endpoint
-    COREBANK_ENDPOINT=$(kubectl get service efs-test-service -n efs-test --context corebank-cluster -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-    
-    if [ -z "$COREBANK_ENDPOINT" ]; then
-        COREBANK_ENDPOINT=$(kubectl get service efs-test-service -n efs-test --context corebank-cluster -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-    fi
-    
-    log "✓ CoreBank deployment completed"
-    info "CoreBank endpoint: $COREBANK_ENDPOINT"
-    
-    echo "COREBANK_ENDPOINT=$COREBANK_ENDPOINT" >> "${PROJECT_ROOT}/app-endpoints.env"
+    # Create temporary file with substituted variables
+    envsubst < "$input_file" > "$output_file"
 }
 
-# Deploy to Satellite cluster
-deploy_to_satellite() {
+# Deploy application to EKS cluster
+deploy_application() {
     local account_id=$1
     local account_name=$2
-    local ecr_uri=$3
-    local access_point_id=$4
+    local manifest_file=$3
     
-    log "Deploying EFS Test App to $account_name cluster..."
+    log "Deploying EFS test application to $account_name cluster..."
     
-    # Switch to satellite account and update kubeconfig
+    # Switch to account and set kubectl context
     export AWS_PROFILE="$account_name"
-    aws eks update-kubeconfig --region $AWS_REGION --name "$account_name-cluster" --alias "$account_name-cluster"
+    kubectl config use-context "$account_name-cluster"
     
-    # Get OIDC issuer for the cluster
-    OIDC_ISSUER=$(aws eks describe-cluster --name "$account_name-cluster" --region $AWS_REGION --query 'cluster.identity.oidc.issuer' --output text | sed 's|https://||')
+    # Verify cluster connectivity
+    info "Verifying cluster connectivity"
+    kubectl get nodes
     
-    # Create EFS CSI driver service account if not exists
-    info "Ensuring EFS CSI driver service account exists for $account_name"
-    eksctl create iamserviceaccount \
-        --cluster="$account_name-cluster" \
-        --namespace=kube-system \
-        --name=efs-csi-controller-sa \
-        --attach-policy-arn=arn:aws:iam::aws:policy/AmazonElasticFileSystemClientFullAccess \
-        --approve \
-        --override-existing-serviceaccounts \
-        --region=$AWS_REGION || info "Service account already exists"
-    
-    # Create cross-account IAM role for EFS access
-    info "Creating cross-account IAM role for $account_name"
-    
-    # Create trust policy for IRSA
-    cat > /tmp/$account_name-trust-policy.json << EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Principal": {
-                "Federated": "arn:aws:iam::$account_id:oidc-provider/$OIDC_ISSUER"
-            },
-            "Action": "sts:AssumeRoleWithWebIdentity",
-            "Condition": {
-                "StringEquals": {
-                    "$OIDC_ISSUER:sub": "system:serviceaccount:efs-test:efs-test-sa",
-                    "$OIDC_ISSUER:aud": "sts.amazonaws.com"
-                }
-            }
-        }
-    ]
-}
+    # Create namespace if it doesn't exist
+    info "Creating namespace"
+    kubectl apply -f - << EOF
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: efs-test
+  labels:
+    name: efs-test
+    purpose: efs-testing
 EOF
     
-    # Create IAM role
-    ROLE_ARN=$(aws iam create-role \
-        --role-name "$account_name-EFS-CrossAccount-Role" \
-        --assume-role-policy-document file:///tmp/$account_name-trust-policy.json \
-        --region $AWS_REGION \
-        --query 'Role.Arn' \
-        --output text 2>/dev/null || \
-    aws iam get-role \
-        --role-name "$account_name-EFS-CrossAccount-Role" \
-        --query 'Role.Arn' \
-        --output text)
+    # Set environment variables for substitution
+    export ECR_REGISTRY=""  # Empty since we include full image path
     
-    # Create policy for EFS access
-    cat > /tmp/$account_name-efs-policy.json << EOF
-{
-    "Version": "2012-10-17",
-    "Statement": [
-        {
-            "Effect": "Allow",
-            "Action": [
-                "elasticfilesystem:ClientMount",
-                "elasticfilesystem:ClientWrite",
-                "elasticfilesystem:ClientRootAccess",
-                "elasticfilesystem:DescribeFileSystems",
-                "elasticfilesystem:DescribeAccessPoints"
-            ],
-            "Resource": "*"
-        }
-    ]
-}
-EOF
+    # Substitute environment variables in manifest
+    local temp_manifest="/tmp/$account_name-app-manifest.yaml"
+    substitute_variables "$manifest_file" "$temp_manifest"
     
-    # Attach policy to role
-    aws iam put-role-policy \
-        --role-name "$account_name-EFS-CrossAccount-Role" \
-        --policy-name "EFS-CrossAccount-Access-Policy" \
-        --policy-document file:///tmp/$account_name-efs-policy.json \
-        --region $AWS_REGION
+    # Apply Kubernetes manifests
+    info "Applying Kubernetes manifests"
+    kubectl apply -f "$temp_manifest"
     
-    # Create temporary manifest with substituted values
-    info "Creating $account_name deployment manifest"
-    cat "${PROJECT_ROOT}/infrastructure/kubernetes/efs-test-app.yaml" | \
-    sed "s/\${EFS_COREBANK_ID}/$EFS_COREBANK_ID/g" | \
-    sed "s/\${SATELLITE_ACCESS_POINT}/$access_point_id/g" | \
-    sed "s/\${EFS_VOLUME_HANDLE}/$EFS_COREBANK_ID::$access_point_id/g" | \
-    sed "s/\${ECR_REPOSITORY_URI}/${ecr_uri//\//\\/}/g" | \
-    sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/${ROLE_ARN//\//\\/}/g" | \
-    sed "s/\${AWS_REGION}/$AWS_REGION/g" \
-    > /tmp/$account_name-efs-test-app.yaml
-    
-    # Apply manifest
-    info "Applying $account_name deployment"
-    kubectl apply -f /tmp/$account_name-efs-test-app.yaml --context "$account_name-cluster"
-    
-    # Wait for deployment
-    info "Waiting for $account_name deployment to be ready"
-    kubectl wait --for=condition=available --timeout=300s deployment/efs-test-app -n efs-test --context "$account_name-cluster"
+    # Wait for deployment to be ready
+    info "Waiting for deployment to be ready (timeout: 5 minutes)"
+    kubectl wait --for=condition=available --timeout=300s deployment/efs-test-app-$account_name -n efs-test
     
     # Get service endpoint
-    SATELLITE_ENDPOINT=$(kubectl get service efs-test-service -n efs-test --context "$account_name-cluster" -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+    info "Getting service endpoint"
+    local endpoint=""
+    local max_attempts=30
+    local attempt=0
     
-    if [ -z "$SATELLITE_ENDPOINT" ]; then
-        SATELLITE_ENDPOINT=$(kubectl get service efs-test-service -n efs-test --context "$account_name-cluster" -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+    while [ $attempt -lt $max_attempts ]; do
+        endpoint=$(kubectl get svc efs-test-app-$account_name-service -n efs-test -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+        if [ -n "$endpoint" ]; then
+            break
+        fi
+        
+        # Try IP if hostname is not available
+        endpoint=$(kubectl get svc efs-test-app-$account_name-service -n efs-test -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        if [ -n "$endpoint" ]; then
+            break
+        fi
+        
+        info "Waiting for LoadBalancer endpoint... (attempt $((attempt+1))/$max_attempts)"
+        sleep 10
+        attempt=$((attempt+1))
+    done
+    
+    if [ -z "$endpoint" ]; then
+        warn "LoadBalancer endpoint not available after 5 minutes"
+        # Get the service details for debugging
+        kubectl describe svc efs-test-app-$account_name-service -n efs-test
+        endpoint="pending"
+    else
+        info "Service endpoint: http://$endpoint"
     fi
     
-    log "✓ $account_name deployment completed"
-    info "$account_name endpoint: $SATELLITE_ENDPOINT"
+    # Save endpoint information
+    echo "${account_name^^}_ENDPOINT=http://$endpoint" >> "${PROJECT_ROOT}/app-endpoints.env"
     
-    echo "${account_name^^}_ENDPOINT=$SATELLITE_ENDPOINT" >> "${PROJECT_ROOT}/app-endpoints.env"
+    # Show pod status
+    info "Pod status:"
+    kubectl get pods -n efs-test -l account=$account_name
+    
+    # Show recent logs
+    info "Recent application logs:"
+    kubectl logs -n efs-test -l account=$account_name --tail=10 || true
+    
+    log "✓ Application deployed successfully to $account_name cluster"
+    
+    # Cleanup temp files
+    rm -f "$temp_manifest"
 }
 
-# Test EFS functionality
-test_efs_functionality() {
-    log "Testing EFS functionality..."
+# Test application health
+test_application_health() {
+    local account_name=$1
+    local endpoint_var="${account_name^^}_ENDPOINT"
+    local endpoint="${!endpoint_var}"
     
-    # Load endpoints
-    source "${PROJECT_ROOT}/app-endpoints.env"
-    
-    # Test CoreBank app
-    if [ ! -z "$COREBANK_ENDPOINT" ]; then
-        info "Testing CoreBank app health"
-        curl -f "http://$COREBANK_ENDPOINT/health" || warn "CoreBank health check failed"
-        
-        info "Running CoreBank EFS test"
-        curl -X POST -H "Content-Type: application/json" \
-            -d '{"filename":"test/corebank-test.json","content":"CoreBank test data","metadata":{"source":"corebank"}}' \
-            "http://$COREBANK_ENDPOINT/write" || warn "CoreBank write test failed"
+    if [ -z "$endpoint" ] || [ "$endpoint" = "http://pending" ]; then
+        warn "Skipping health check for $account_name - endpoint not available"
+        return 0
     fi
     
-    # Test Satellite app
-    if [ ! -z "$SATELLITE_ENDPOINT" ]; then
-        info "Testing SATELLITE app health"
-        curl -f "http://$SATELLITE_ENDPOINT/health" || warn "SATELLITE health check failed"
-        
-        info "Running SATELLITE EFS test"
-        curl -X POST -H "Content-Type: application/json" \
-            -d '{"filename":"test/SATELLITE-test.json","content":"SATELLITE test data","metadata":{"source":"SATELLITE"}}' \
-            "http://$SATELLITE_ENDPOINT/write" || warn "SATELLITE write test failed"
-        
-        info "Running SATELLITE automated test suite"
-        curl -X POST "http://$SATELLITE_ENDPOINT/test" || warn "SATELLITE test suite failed"
-    fi
+    info "Testing $account_name application health at $endpoint"
     
-    log "✓ EFS functionality testing completed"
+    local max_attempts=10
+    local attempt=0
+    
+    while [ $attempt -lt $max_attempts ]; do
+        if curl -f -s "$endpoint/health" > /dev/null 2>&1; then
+            log "✓ $account_name application is healthy"
+            return 0
+        fi
+        
+        info "Health check attempt $((attempt+1))/$max_attempts failed, retrying in 15 seconds..."
+        sleep 15
+        attempt=$((attempt+1))
+    done
+    
+    warn "Health check failed for $account_name application after $max_attempts attempts"
+    return 1
 }
 
 # Main function
@@ -275,41 +174,52 @@ main() {
     log "Starting EFS Test Application Deployment"
     
     # Check prerequisites
+    if ! command -v kubectl &> /dev/null; then
+        error "kubectl is required but not installed"
+    fi
+    
+    if ! command -v envsubst &> /dev/null; then
+        error "envsubst is required but not installed (install gettext package)"
+    fi
+    
+    # Check if required environment variables are set
     if [ -z "$EFS_COREBANK_ID" ]; then
-        error "EFS infrastructure not found. Run ./scripts/deploy-efs-infrastructure.sh first"
+        error "EFS_COREBANK_ID is not set. Please run deploy-efs-infrastructure.sh first."
     fi
     
-    if [ -z "$COREBANK_ECR_URI" ]; then
-        error "ECR URIs not found. Run ./scripts/build-and-push-image.sh first"
-    fi
+    # Initialize app endpoints file
+    > "${PROJECT_ROOT}/app-endpoints.env"
     
-    # Initialize endpoints file
-    echo "# Application endpoints" > "${PROJECT_ROOT}/app-endpoints.env"
+    # Deploy CoreBank application
+    deploy_application "$COREBANK_ACCOUNT" "corebank" "${PROJECT_ROOT}/kubernetes/corebank-app.yaml"
     
-    # Deploy to CoreBank
-    deploy_to_corebank
+    # Deploy Satellite application
+    deploy_application "$SATELLITE_ACCOUNT" "satellite" "${PROJECT_ROOT}/kubernetes/satellite-app.yaml"
     
-    # Deploy to Satellite
-    deploy_to_satellite "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_ECR_URI" "$SATELLITE_ACCESS_POINT"
+    # Source the endpoints
+    source "${PROJECT_ROOT}/app-endpoints.env"
     
-    # Wait for load balancers to be ready
-    info "Waiting for load balancers to be ready..."
-    sleep 60
+    # Test application health
+    log "Testing application health..."
+    test_application_health "corebank"
+    test_application_health "satellite"
     
-    # Test functionality
-    test_efs_functionality
-    
-    log "🎉 EFS Test Application deployment completed successfully!"
+    log "🎉 EFS Test Applications deployed successfully!"
     log ""
     log "Application endpoints:"
-    cat "${PROJECT_ROOT}/app-endpoints.env" | grep -v "^#"
+    cat "${PROJECT_ROOT}/app-endpoints.env"
     log ""
-    log "Test commands:"
-    log "  Health check: curl http://\$ENDPOINT/health"
-    log "  Write test: curl -X POST -H 'Content-Type: application/json' -d '{\"filename\":\"test.json\",\"content\":\"test data\"}' http://\$ENDPOINT/write"
-    log "  Read test: curl 'http://\$ENDPOINT/read?filename=test.json'"
-    log "  List files: curl 'http://\$ENDPOINT/list'"
-    log "  Run test suite: curl -X POST http://\$ENDPOINT/test"
+    log "Testing commands:"
+    if [ -n "$COREBANK_ENDPOINT" ] && [ "$COREBANK_ENDPOINT" != "http://pending" ]; then
+        log "  CoreBank Health: curl $COREBANK_ENDPOINT/health"
+    fi
+    if [ -n "$SATELLITE_ENDPOINT" ] && [ "$SATELLITE_ENDPOINT" != "http://pending" ]; then
+        log "  Satellite Health: curl $SATELLITE_ENDPOINT/health"
+    fi
+    log ""
+    log "Next steps:"
+    log "1. Run tests: ./scripts/test-efs-cross-account.sh"
+    log "2. Monitor applications: kubectl get pods -n efs-test"
 }
 
 # Run main function

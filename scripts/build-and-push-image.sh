@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Build and Push EFS Test App to ECR
+# Build and Push Docker Images to ECR
 set -e
 
 PROJECT_ROOT="."
@@ -30,135 +30,130 @@ info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}"
 }
 
-# Configuration
-APP_NAME="efs-test-app"
-IMAGE_TAG="${IMAGE_TAG:-latest}"
-BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
-GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-
-# Function to build and push for specific account
-build_and_push_for_account() {
+# Build and push image to ECR
+build_and_push_image() {
     local account_id=$1
     local account_name=$2
     
-    log "Building and pushing image for $account_name account ($account_id)"
+    log "Building and pushing Docker image for $account_name account..."
     
-    # ECR repository URI
-    local ecr_repo="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
-    
-    # Login to ECR
-    info "Logging in to ECR for account $account_id"
-    aws ecr get-login-password --region $AWS_REGION --profile $account_name | \
-        docker login --username AWS --password-stdin $ecr_repo
+    # Switch to account
+    export AWS_PROFILE="$account_name"
     
     # Create ECR repository if it doesn't exist
     info "Creating ECR repository if it doesn't exist"
-    aws ecr describe-repositories --repository-names $APP_NAME --region $AWS_REGION --profile $account_name 2>/dev/null || \
     aws ecr create-repository \
-        --repository-name $APP_NAME \
+        --repository-name efs-test-app \
         --region $AWS_REGION \
-        --profile $account_name \
         --image-scanning-configuration scanOnPush=true \
-        --encryption-configuration encryptionType=AES256
+        --encryption-configuration encryptionType=AES256 \
+        2>/dev/null || warn "ECR repository already exists"
+    
+    # Get ECR login token
+    info "Logging into ECR"
+    aws ecr get-login-password --region $AWS_REGION | \
+        docker login --username AWS --password-stdin $account_id.dkr.ecr.$AWS_REGION.amazonaws.com
     
     # Build Docker image
-    info "Building Docker image"
-    local original_dir=$(pwd)
+    local image_tag="$account_id.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
+    info "Building Docker image: $image_tag"
+    
     cd "${PROJECT_ROOT}/applications/efs-test-app"
+    docker build -t efs-test-app .
+    docker tag efs-test-app:latest $image_tag
     
-    docker build \
-        --build-arg BUILD_DATE="$BUILD_DATE" \
-        --build-arg GIT_COMMIT="$GIT_COMMIT" \
-        --tag $APP_NAME:$IMAGE_TAG \
-        --tag $APP_NAME:$GIT_COMMIT \
-        --tag $ecr_repo:$IMAGE_TAG \
-        --tag $ecr_repo:$GIT_COMMIT \
-        .
+    # Push image to ECR
+    info "Pushing image to ECR"
+    docker push $image_tag
     
-    cd "$original_dir"
+    cd "${PROJECT_ROOT}"
     
-    # Push images to ECR
-    info "Pushing images to ECR"
-    docker push $ecr_repo:$IMAGE_TAG
-    docker push $ecr_repo:$GIT_COMMIT
+    log "✓ Docker image built and pushed for $account_name account"
+    echo "Image: $image_tag"
+}
+
+# Set lifecycle policy for ECR repository
+set_ecr_lifecycle_policy() {
+    local account_name=$1
     
-    # Set lifecycle policy
-    info "Setting ECR lifecycle policy"
+    info "Setting ECR lifecycle policy for $account_name"
+    export AWS_PROFILE="$account_name"
+    
+    cat > /tmp/ecr-lifecycle-policy.json << EOF
+{
+    "rules": [
+        {
+            "rulePriority": 1,
+            "description": "Keep last 10 images",
+            "selection": {
+                "tagStatus": "tagged",
+                "countType": "imageCountMoreThan",
+                "countNumber": 10
+            },
+            "action": {
+                "type": "expire"
+            }
+        },
+        {
+            "rulePriority": 2,
+            "description": "Delete untagged images older than 1 day",
+            "selection": {
+                "tagStatus": "untagged",
+                "countType": "sinceImagePushed",
+                "countUnit": "days",
+                "countNumber": 1
+            },
+            "action": {
+                "type": "expire"
+            }
+        }
+    ]
+}
+EOF
+    
     aws ecr put-lifecycle-policy \
-        --repository-name $APP_NAME \
-        --region $AWS_REGION \
-        --profile $account_name \
-        --lifecycle-policy-text '{
-            "rules": [
-                {
-                    "rulePriority": 1,
-                    "description": "Keep last 10 images",
-                    "selection": {
-                        "tagStatus": "tagged",
-                        "tagPrefixList": ["latest", "v"],
-                        "countType": "imageCountMoreThan",
-                        "countNumber": 10
-                    },
-                    "action": {
-                        "type": "expire"
-                    }
-                },
-                {
-                    "rulePriority": 2,
-                    "description": "Delete untagged images older than 1 day",
-                    "selection": {
-                        "tagStatus": "untagged",
-                        "countType": "sinceImagePushed",
-                        "countUnit": "days",
-                        "countNumber": 1
-                    },
-                    "action": {
-                        "type": "expire"
-                    }
-                }
-            ]
-        }'
-    
-    log "✓ Successfully built and pushed image for $account_name: $ecr_repo:$IMAGE_TAG"
+        --repository-name efs-test-app \
+        --lifecycle-policy-text file:///tmp/ecr-lifecycle-policy.json \
+        --region $AWS_REGION
 }
 
 # Main function
 main() {
-    log "Starting EFS Test App build and push process"
+    log "Starting Docker image build and push process"
     
     # Check prerequisites
     if ! command -v docker &> /dev/null; then
-        error "Docker is required but not installed. Install with: curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh"
+        error "Docker is required but not installed"
     fi
     
-    if ! command -v aws &> /dev/null; then
-        error "AWS CLI is required but not installed"
+    # Check if Docker daemon is running
+    if ! docker info &> /dev/null; then
+        error "Docker daemon is not running"
     fi
     
     # Build and push for CoreBank account
-    log "Building for CoreBank account..."
-    COREBANK_ECR_URI="${COREBANK_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
-    build_and_push_for_account "$COREBANK_ACCOUNT" "corebank"
+    build_and_push_image "$COREBANK_ACCOUNT" "corebank"
+    set_ecr_lifecycle_policy "corebank"
     
     # Build and push for Satellite account
-    log "Building for Satellite account..."
-    SATELLITE_ECR_URI="${SATELLITE_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
-    build_and_push_for_account "$SATELLITE_ACCOUNT" "satellite"
+    build_and_push_image "$SATELLITE_ACCOUNT" "satellite"
+    set_ecr_lifecycle_policy "satellite"
     
-    # Save ECR URIs to file for deployment scripts
-    cat > "${PROJECT_ROOT}/ecr-uris.env" << EOF
-COREBANK_ECR_URI=$COREBANK_ECR_URI
-SATELLITE_ECR_URI=$SATELLITE_ECR_URI
+    # Save image information
+    cat > "${PROJECT_ROOT}/docker-images.env" << EOF
+COREBANK_IMAGE=$COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest
+SATELLITE_IMAGE=$SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest
 EOF
     
-    log "🎉 Build and push completed successfully!"
+    log "🎉 Docker images built and pushed successfully!"
     log ""
-    log "ECR URIs:"
-    log "  CoreBank: $COREBANK_ECR_URI"
-    log "  Satellite: $SATELLITE_ECR_URI"
+    log "Images created:"
+    log "  CoreBank: $COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
+    log "  Satellite: $SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     log ""
     log "Next steps:"
     log "1. Deploy applications: ./scripts/deploy-efs-test-app.sh"
+    log "2. Run tests: ./scripts/test-efs-cross-account.sh"
 }
 
 # Run main function

@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Test EFS Cross-Account Functionality
+# Test Cross-Account EFS Functionality
 set -e
 
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
-# Load application endpoints
+# Source endpoints if available
 if [ -f "${PROJECT_ROOT}/app-endpoints.env" ]; then
     source "${PROJECT_ROOT}/app-endpoints.env"
 fi
@@ -28,341 +28,356 @@ warn() {
 
 error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
-    exit 1
 }
 
 info() {
     echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO: $1${NC}"
 }
 
+success() {
+    echo -e "${GREEN}✓ $1${NC}"
+}
+
+failure() {
+    echo -e "${RED}✗ $1${NC}"
+}
+
+# Test results tracking
+declare -A test_results
+total_tests=0
+passed_tests=0
+
+# Record test result
+record_test() {
+    local test_name=$1
+    local result=$2
+    local details=$3
+    
+    total_tests=$((total_tests + 1))
+    test_results["$test_name"]="$result|$details"
+    
+    if [ "$result" = "PASS" ]; then
+        passed_tests=$((passed_tests + 1))
+        success "$test_name: $details"
+    else
+        failure "$test_name: $details"
+    fi
+}
+
 # Test application health
 test_health() {
-    local endpoint=$1
-    local app_name=$2
+    local app_name=$1
+    local endpoint=$2
     
-    info "Testing $app_name health..."
+    info "Testing $app_name health at $endpoint"
     
-    local response=$(curl -s -w "%{http_code}" -o /tmp/health_response.json "http://$endpoint/health")
-    local http_code="${response: -3}"
+    if [ -z "$endpoint" ] || [ "$endpoint" = "http://pending" ]; then
+        record_test "$app_name Health Check" "FAIL" "Endpoint not available"
+        return 1
+    fi
     
-    if [ "$http_code" = "200" ]; then
-        local healthy=$(cat /tmp/health_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['healthy'])" 2>/dev/null || echo "false")
-        if [ "$healthy" = "True" ]; then
-            log "✓ $app_name health check passed"
-            
-            # Show EFS mount status
-            local corebank_healthy=$(cat /tmp/health_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['corebank_efs']['healthy'])" 2>/dev/null || echo "false")
-            
-            info "$app_name EFS status:"
-            info "  - CoreBank EFS: $corebank_healthy"
-            
+    local response=$(curl -s -w "%{http_code}" -o /tmp/health_response.json "$endpoint/health" 2>/dev/null || echo "000")
+    
+    if [ "$response" = "200" ]; then
+        local status=$(cat /tmp/health_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('status', 'unknown'))" 2>/dev/null || echo "unknown")
+        if [ "$status" = "healthy" ]; then
+            record_test "$app_name Health Check" "PASS" "Application is healthy"
             return 0
         else
-            warn "$app_name health check failed - service unhealthy"
+            record_test "$app_name Health Check" "FAIL" "Application status: $status"
             return 1
         fi
     else
-        warn "$app_name health check failed - HTTP $http_code"
+        record_test "$app_name Health Check" "FAIL" "HTTP $response"
         return 1
     fi
 }
 
-# Test write functionality
+# Test file write operation
 test_write() {
-    local endpoint=$1
-    local app_name=$2
-    local test_id=$3
+    local app_name=$1
+    local endpoint=$2
+    local test_filename="test/cross-account-test-$(date +%s).json"
     
-    info "Testing $app_name write functionality..."
+    info "Testing $app_name write operation"
     
-    local filename="test/write_test_${test_id}_$(date +%s).json"
-    local content="Write test data from $app_name - $(date)"
-    local metadata='{"test_type":"write_test","app":"'$app_name'","test_id":"'$test_id'"}'
+    if [ -z "$endpoint" ] || [ "$endpoint" = "http://pending" ]; then
+        record_test "$app_name Write Test" "FAIL" "Endpoint not available"
+        return 1
+    fi
     
-    local json_payload=$(cat <<EOF
+    local test_data=$(cat << EOF
 {
-    "filename": "$filename",
-    "content": "$content",
-    "metadata": $metadata
+    "filename": "$test_filename",
+    "content": "Test data from $app_name at $(date)",
+    "metadata": {
+        "test_type": "cross_account",
+        "source_app": "$app_name",
+        "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "test_id": "$(uuidgen 2>/dev/null || echo 'test-$(date +%s)')"
+    }
 }
 EOF
 )
     
-    local start_time=$(date +%s.%N)
-    local response=$(curl -s -w "%{http_code}" -o /tmp/write_response.json \
-        -H "Content-Type: application/json" \
-        -d "$json_payload" \
-        "http://$endpoint/write")
-    local end_time=$(date +%s.%N)
-    local duration=$(echo "$end_time - $start_time" | bc)
-    local http_code="${response: -3}"
+    local response=$(curl -s -w "%{http_code}" -H "Content-Type: application/json" -d "$test_data" -o /tmp/write_response.json "$endpoint/write" 2>/dev/null || echo "000")
     
-    if [ "$http_code" = "200" ]; then
-        local success=$(cat /tmp/write_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
-        local result_success=$(cat /tmp/write_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['result']['success'])" 2>/dev/null || echo "false")
-        
-        info "$app_name write results (${duration}s):"
-        info "  - Overall: $success"
-        info "  - CoreBank EFS: $result_success"
-        
+    if [ "$response" = "200" ]; then
+        local success=$(cat /tmp/write_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "false")
         if [ "$success" = "True" ]; then
-            log "✓ $app_name write test passed"
-            echo "$filename" >> /tmp/test_files_${test_id}.txt
+            record_test "$app_name Write Test" "PASS" "File written: $test_filename"
+            echo "$test_filename" >> /tmp/test_files_written.txt
             return 0
         else
-            warn "$app_name write test had issues"
+            local error_msg=$(cat /tmp/write_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('error', 'Unknown error'))" 2>/dev/null || echo "Unknown error")
+            record_test "$app_name Write Test" "FAIL" "Write failed: $error_msg"
             return 1
         fi
     else
-        warn "$app_name write test failed - HTTP $http_code"
+        record_test "$app_name Write Test" "FAIL" "HTTP $response"
         return 1
     fi
 }
 
-# Test read functionality
+# Test file read operation
 test_read() {
-    local endpoint=$1
-    local app_name=$2
+    local app_name=$1
+    local endpoint=$2
     local filename=$3
     
-    info "Testing $app_name read from CoreBank EFS..."
+    info "Testing $app_name read operation for file: $filename"
     
-    local response=$(curl -s -w "%{http_code}" -o /tmp/read_response.json \
-        "http://$endpoint/read?filename=$filename")
-    local http_code="${response: -3}"
+    if [ -z "$endpoint" ] || [ "$endpoint" = "http://pending" ]; then
+        record_test "$app_name Read Test" "FAIL" "Endpoint not available"
+        return 1
+    fi
     
-    if [ "$http_code" = "200" ]; then
-        local success=$(cat /tmp/read_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
+    local response=$(curl -s -w "%{http_code}" -o /tmp/read_response.json "$endpoint/read?filename=$filename" 2>/dev/null || echo "000")
+    
+    if [ "$response" = "200" ]; then
+        local success=$(cat /tmp/read_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "false")
         if [ "$success" = "True" ]; then
-            log "✓ $app_name read from CoreBank EFS successful"
+            record_test "$app_name Read Test" "PASS" "File read successfully: $filename"
             return 0
         else
-            warn "$app_name read from CoreBank EFS failed"
+            local error_msg=$(cat /tmp/read_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('error', 'Unknown error'))" 2>/dev/null || echo "Unknown error")
+            record_test "$app_name Read Test" "FAIL" "Read failed: $error_msg"
             return 1
         fi
+    elif [ "$response" = "404" ]; then
+        record_test "$app_name Read Test" "FAIL" "File not found: $filename"
+        return 1
     else
-        warn "$app_name read from CoreBank EFS failed - HTTP $http_code"
+        record_test "$app_name Read Test" "FAIL" "HTTP $response"
         return 1
     fi
 }
 
-# Test list functionality
+# Test file listing
 test_list() {
-    local endpoint=$1
-    local app_name=$2
+    local app_name=$1
+    local endpoint=$2
     
-    info "Testing $app_name list files from CoreBank EFS..."
+    info "Testing $app_name file listing"
     
-    local response=$(curl -s -w "%{http_code}" -o /tmp/list_response.json \
-        "http://$endpoint/list?path=test")
-    local http_code="${response: -3}"
-    
-    if [ "$http_code" = "200" ]; then
-        local success=$(cat /tmp/list_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
-        if [ "$success" = "True" ]; then
-            local file_count=$(cat /tmp/list_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['total'])" 2>/dev/null || echo "0")
-            log "✓ $app_name list from CoreBank EFS successful ($file_count files)"
-            return 0
-        else
-            warn "$app_name list from CoreBank EFS failed"
-            return 1
-        fi
-    else
-        warn "$app_name list from CoreBank EFS failed - HTTP $http_code"
+    if [ -z "$endpoint" ] || [ "$endpoint" = "http://pending" ]; then
+        record_test "$app_name List Test" "FAIL" "Endpoint not available"
         return 1
     fi
-}
-
-# Test automated test suite
-test_automated_suite() {
-    local endpoint=$1
-    local app_name=$2
     
-    info "Running $app_name automated test suite..."
+    local response=$(curl -s -w "%{http_code}" -o /tmp/list_response.json "$endpoint/list" 2>/dev/null || echo "000")
     
-    local start_time=$(date +%s.%N)
-    local response=$(curl -s -w "%{http_code}" -o /tmp/suite_response.json \
-        -X POST "http://$endpoint/test")
-    local end_time=$(date +%s.%N)
-    local duration=$(echo "$end_time - $start_time" | bc)
-    local http_code="${response: -3}"
-    
-    if [ "$http_code" = "200" ]; then
-        local success=$(cat /tmp/suite_response.json | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])" 2>/dev/null || echo "false")
+    if [ "$response" = "200" ]; then
+        local success=$(cat /tmp/list_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "false")
         if [ "$success" = "True" ]; then
-            log "✓ $app_name automated test suite passed (${duration}s)"
+            local file_count=$(cat /tmp/list_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('total_files', 0))" 2>/dev/null || echo "0")
+            record_test "$app_name List Test" "PASS" "Listed $file_count files"
             return 0
         else
-            warn "$app_name automated test suite failed"
+            local error_msg=$(cat /tmp/list_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('error', 'Unknown error'))" 2>/dev/null || echo "Unknown error")
+            record_test "$app_name List Test" "FAIL" "List failed: $error_msg"
             return 1
         fi
     else
-        warn "$app_name automated test suite failed - HTTP $http_code"
+        record_test "$app_name List Test" "FAIL" "HTTP $response"
         return 1
     fi
 }
 
 # Test cross-account data consistency
 test_cross_account_consistency() {
-    info "Testing cross-account data consistency..."
+    info "Testing cross-account data consistency"
     
-    # Write data from satellite
-    if [ ! -z "$SATELLITE_ENDPOINT" ] && [ ! -z "$COREBANK_ENDPOINT" ]; then
-        local filename="test/consistency_test_$(date +%s).json"
-        local content="Cross-account consistency test data"
-        
-        info "Writing data from Satellite..."
-        curl -s -X POST -H "Content-Type: application/json" \
-            -d "{\"filename\":\"$filename\",\"content\":\"$content\"}" \
-            "http://$SATELLITE_ENDPOINT/write" > /tmp/consistency_write.json
-        
-        sleep 5  # Wait for sync
-        
-        # Try to read from CoreBank
-        info "Reading data from CoreBank EFS..."
-        if test_read "$COREBANK_ENDPOINT" "CoreBank" "$filename"; then
-            log "✓ Cross-account data consistency test passed"
-            return 0
-        else
-            warn "Cross-account data consistency test failed"
-            return 1
+    # Initialize test files list
+    > /tmp/test_files_written.txt
+    
+    # Write from CoreBank, read from Satellite
+    if test_write "CoreBank" "$COREBANK_ENDPOINT"; then
+        local corebank_file=$(tail -n 1 /tmp/test_files_written.txt)
+        sleep 5  # Allow time for EFS consistency
+        if test_read "Satellite" "$SATELLITE_ENDPOINT" "$corebank_file"; then
+            record_test "Cross-Account Consistency (CoreBank->Satellite)" "PASS" "File written by CoreBank successfully read by Satellite"
         fi
     fi
     
-    warn "Cross-account consistency test skipped - endpoints not available"
-    return 1
+    # Write from Satellite, read from CoreBank
+    if test_write "Satellite" "$SATELLITE_ENDPOINT"; then
+        local satellite_file=$(tail -n 1 /tmp/test_files_written.txt)
+        sleep 5  # Allow time for EFS consistency
+        if test_read "CoreBank" "$COREBANK_ENDPOINT" "$satellite_file"; then
+            record_test "Cross-Account Consistency (Satellite->CoreBank)" "PASS" "File written by Satellite successfully read by CoreBank"
+        fi
+    fi
 }
 
-# Performance test
+# Test performance
 test_performance() {
-    local endpoint=$1
-    local app_name=$2
-    local num_files=${3:-10}
+    local app_name=$1
+    local endpoint=$2
     
-    info "Running $app_name performance test ($num_files files)..."
+    info "Testing $app_name performance"
     
+    if [ -z "$endpoint" ] || [ "$endpoint" = "http://pending" ]; then
+        record_test "$app_name Performance Test" "FAIL" "Endpoint not available"
+        return 1
+    fi
+    
+    # Run automated test suite
     local start_time=$(date +%s.%N)
-    local success_count=0
-    local fail_count=0
-    
-    for i in $(seq 1 $num_files); do
-        local filename="test/perf_test_${i}_$(date +%s).json"
-        local content="Performance test data $i - $(date)"
-        
-        local response=$(curl -s -w "%{http_code}" -o /dev/null \
-            -H "Content-Type: application/json" \
-            -d "{\"filename\":\"$filename\",\"content\":\"$content\"}" \
-            "http://$endpoint/write")
-        
-        if [ "${response: -3}" = "200" ]; then
-            ((success_count++))
-        else
-            ((fail_count++))
-        fi
-    done
-    
+    local response=$(curl -s -w "%{http_code}" -X POST -o /tmp/perf_response.json "$endpoint/test" 2>/dev/null || echo "000")
     local end_time=$(date +%s.%N)
-    local duration=$(echo "$end_time - $start_time" | bc)
-    local throughput=$(echo "scale=2; $num_files / $duration" | bc)
+    local duration=$(echo "$end_time - $start_time" | bc 2>/dev/null || echo "0")
     
-    info "$app_name performance results:"
-    info "  - Duration: ${duration}s"
-    info "  - Successful writes: $success_count/$num_files"
-    info "  - Failed writes: $fail_count/$num_files"
-    info "  - Throughput: $throughput files/sec"
-    
-    if [ $success_count -eq $num_files ]; then
-        log "✓ $app_name performance test passed"
-        return 0
+    if [ "$response" = "200" ]; then
+        local overall_success=$(cat /tmp/perf_response.json | python3 -c "import json,sys; print(json.load(sys.stdin).get('overall_success', False))" 2>/dev/null || echo "false")
+        if [ "$overall_success" = "True" ]; then
+            record_test "$app_name Performance Test" "PASS" "Automated tests passed in ${duration}s"
+            return 0
+        else
+            record_test "$app_name Performance Test" "FAIL" "Some automated tests failed in ${duration}s"
+            return 1
+        fi
     else
-        warn "$app_name performance test had failures"
+        record_test "$app_name Performance Test" "FAIL" "HTTP $response"
         return 1
     fi
 }
 
-# Main test function
+# Print test summary
+print_test_summary() {
+    log ""
+    log "🧪 Test Results Summary"
+    log "======================"
+    log "Total Tests: $total_tests"
+    log "Passed: $passed_tests"
+    log "Failed: $((total_tests - passed_tests))"
+    log "Success Rate: $(echo "scale=1; $passed_tests * 100 / $total_tests" | bc 2>/dev/null || echo "0")%"
+    log ""
+    
+    if [ $passed_tests -eq $total_tests ]; then
+        log "🎉 All tests passed! Cross-account EFS functionality is working correctly."
+    else
+        log "⚠️  Some tests failed. Please check the details above."
+    fi
+    
+    # Detailed results
+    log ""
+    log "Detailed Results:"
+    log "=================="
+    for test_name in "${!test_results[@]}"; do
+        local result=$(echo "${test_results[$test_name]}" | cut -d'|' -f1)
+        local details=$(echo "${test_results[$test_name]}" | cut -d'|' -f2-)
+        
+        if [ "$result" = "PASS" ]; then
+            echo -e "${GREEN}✓ $test_name${NC}: $details"
+        else
+            echo -e "${RED}✗ $test_name${NC}: $details"
+        fi
+    done
+}
+
+# Cleanup function
+cleanup() {
+    rm -f /tmp/health_response.json
+    rm -f /tmp/write_response.json
+    rm -f /tmp/read_response.json
+    rm -f /tmp/list_response.json
+    rm -f /tmp/perf_response.json
+    rm -f /tmp/test_files_written.txt
+}
+
+# Main function
 main() {
-    log "Starting EFS Cross-Account Functionality Tests"
+    log "Starting Cross-Account EFS Test Suite"
+    log "======================================"
+    
+    # Setup cleanup trap
+    trap cleanup EXIT
     
     # Check if endpoints are available
     if [ -z "$COREBANK_ENDPOINT" ] && [ -z "$SATELLITE_ENDPOINT" ]; then
-        error "No application endpoints found. Deploy applications first with ./scripts/deploy-efs-test-app.sh"
+        error "No application endpoints found. Please run deploy-efs-test-app.sh first."
     fi
     
-    local test_results=()
-    local test_id=$(date +%s)
-    
-    # Test CoreBank application
-    if [ ! -z "$COREBANK_ENDPOINT" ]; then
-        log "Testing CoreBank Application ($COREBANK_ENDPOINT)"
-        
-        test_health "$COREBANK_ENDPOINT" "CoreBank" && test_results+=("CoreBank-Health: PASS") || test_results+=("CoreBank-Health: FAIL")
-        test_write "$COREBANK_ENDPOINT" "CoreBank" "$test_id" && test_results+=("CoreBank-Write: PASS") || test_results+=("CoreBank-Write: FAIL")
-        test_list "$COREBANK_ENDPOINT" "CoreBank" && test_results+=("CoreBank-List: PASS") || test_results+=("CoreBank-List: FAIL")
-        test_automated_suite "$COREBANK_ENDPOINT" "CoreBank" && test_results+=("CoreBank-Suite: PASS") || test_results+=("CoreBank-Suite: FAIL")
-        test_performance "$COREBANK_ENDPOINT" "CoreBank" 5 && test_results+=("CoreBank-Performance: PASS") || test_results+=("CoreBank-Performance: FAIL")
-    fi
-    
-    # Test Satellite application
-    if [ ! -z "$SATELLITE_ENDPOINT" ]; then
-        log "Testing Satellite Application ($SATELLITE_ENDPOINT)"
-        
-        test_health "$SATELLITE_ENDPOINT" "Satellite" && test_results+=("Satellite-Health: PASS") || test_results+=("Satellite-Health: FAIL")
-        test_write "$SATELLITE_ENDPOINT" "Satellite" "$test_id" && test_results+=("Satellite-Write: PASS") || test_results+=("Satellite-Write: FAIL")
-        test_list "$SATELLITE_ENDPOINT" "Satellite" && test_results+=("Satellite-List: PASS") || test_results+=("Satellite-List: FAIL")
-        test_automated_suite "$SATELLITE_ENDPOINT" "Satellite" && test_results+=("Satellite-Suite: PASS") || test_results+=("Satellite-Suite: FAIL")
-        test_performance "$SATELLITE_ENDPOINT" "Satellite" 5 && test_results+=("Satellite-Performance: PASS") || test_results+=("Satellite-Performance: FAIL")
-        
-        # Test reading from CoreBank mount
-        if [ -f /tmp/test_files_${test_id}.txt ]; then
-            local test_file=$(head -n1 /tmp/test_files_${test_id}.txt)
-            if [ ! -z "$test_file" ]; then
-                test_read "$SATELLITE_ENDPOINT" "Satellite" "$test_file" && test_results+=("Satellite-Read: PASS") || test_results+=("Satellite-Read: FAIL")
-            fi
-        fi
-    fi
-    
-    # Test cross-account consistency
-    test_cross_account_consistency && test_results+=("Cross-Account-Consistency: PASS") || test_results+=("Cross-Account-Consistency: FAIL")
-    
-    # Generate test report
-    log "🎉 EFS Cross-Account Testing Completed!"
+    log "Testing with endpoints:"
+    log "  CoreBank: ${COREBANK_ENDPOINT:-Not Available}"
+    log "  Satellite: ${SATELLITE_ENDPOINT:-Not Available}"
     log ""
-    log "Test Results Summary:"
-    log "===================="
     
-    local pass_count=0
-    local fail_count=0
+    # Run health checks
+    log "🔍 Running Health Checks"
+    log "========================="
+    if [ -n "$COREBANK_ENDPOINT" ]; then
+        test_health "CoreBank" "$COREBANK_ENDPOINT"
+    fi
+    if [ -n "$SATELLITE_ENDPOINT" ]; then
+        test_health "Satellite" "$SATELLITE_ENDPOINT"
+    fi
     
-    for result in "${test_results[@]}"; do
-        if [[ $result == *"PASS"* ]]; then
-            log "✓ $result"
-            ((pass_count++))
-        else
-            warn "✗ $result"
-            ((fail_count++))
-        fi
-    done
-    
+    # Run basic functionality tests
     log ""
-    log "Overall Results:"
-    log "  - Passed: $pass_count"
-    log "  - Failed: $fail_count"
-    log "  - Total: $((pass_count + fail_count))"
+    log "📝 Running Basic Functionality Tests"
+    log "====================================="
     
-    if [ $fail_count -eq 0 ]; then
-        log "🎉 All tests passed! EFS cross-account functionality is working correctly."
+    if [ -n "$COREBANK_ENDPOINT" ]; then
+        test_write "CoreBank" "$COREBANK_ENDPOINT"
+        test_list "CoreBank" "$COREBANK_ENDPOINT"
+    fi
+    
+    if [ -n "$SATELLITE_ENDPOINT" ]; then
+        test_write "Satellite" "$SATELLITE_ENDPOINT"
+        test_list "Satellite" "$SATELLITE_ENDPOINT"
+    fi
+    
+    # Run cross-account consistency tests
+    if [ -n "$COREBANK_ENDPOINT" ] && [ -n "$SATELLITE_ENDPOINT" ]; then
+        log ""
+        log "🔄 Running Cross-Account Consistency Tests"
+        log "==========================================="
+        test_cross_account_consistency
+    fi
+    
+    # Run performance tests
+    log ""
+    log "⚡ Running Performance Tests"
+    log "============================"
+    if [ -n "$COREBANK_ENDPOINT" ]; then
+        test_performance "CoreBank" "$COREBANK_ENDPOINT"
+    fi
+    if [ -n "$SATELLITE_ENDPOINT" ]; then
+        test_performance "Satellite" "$SATELLITE_ENDPOINT"
+    fi
+    
+    # Print summary
+    print_test_summary
+    
+    # Set exit code based on test results
+    if [ $passed_tests -eq $total_tests ]; then
         exit 0
     else
-        warn "⚠️  Some tests failed. Please check the logs above for details."
         exit 1
     fi
 }
-
-# Check dependencies
-command -v curl >/dev/null 2>&1 || error "curl is required but not installed"
-command -v python3 >/dev/null 2>&1 || error "python3 is required but not installed"
-command -v bc >/dev/null 2>&1 || error "bc is required but not installed"
 
 # Run main function
 main "$@"

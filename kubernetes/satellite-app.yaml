@@ -1,0 +1,118 @@
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: efs-pv-satellite
+spec:
+  capacity:
+    storage: 100Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: efs-sc
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: ${EFS_COREBANK_ID}::${SATELLITE_ACCESS_POINT}
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: efs-pvc-satellite
+  namespace: efs-test
+spec:
+  accessModes:
+    - ReadWriteMany
+  storageClassName: efs-sc
+  resources:
+    requests:
+      storage: 100Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: efs-test-app-satellite
+  namespace: efs-test
+  labels:
+    app: efs-test-app
+    account: satellite
+spec:
+  replicas: ${SATELLITE_REPLICAS}
+  selector:
+    matchLabels:
+      app: efs-test-app
+      account: satellite
+  template:
+    metadata:
+      labels:
+        app: efs-test-app
+        account: satellite
+    spec:
+      serviceAccountName: efs-csi-controller-sa
+      containers:
+        - name: efs-test-app
+          image: ${ECR_REGISTRY}/${SATELLITE_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/efs-test-app:latest
+          ports:
+            - containerPort: 5000
+              name: http
+          env:
+            - name: EFS_MOUNT_PATH
+              value: "/mnt/efs"
+            - name: ACCOUNT_TYPE
+              value: "satellite"
+            - name: AWS_REGION
+              value: "${AWS_REGION}"
+            - name: WRITE_TIMEOUT
+              value: "${WRITE_TIMEOUT}"
+          volumeMounts:
+            - name: efs-storage
+              mountPath: /mnt/efs
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: efs-storage
+          persistentVolumeClaim:
+            claimName: efs-pvc-satellite
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: efs-test-app-satellite-service
+  namespace: efs-test
+  labels:
+    app: efs-test-app
+    account: satellite
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 80
+      targetPort: 5000
+      protocol: TCP
+      name: http
+  selector:
+    app: efs-test-app
+    account: satellite

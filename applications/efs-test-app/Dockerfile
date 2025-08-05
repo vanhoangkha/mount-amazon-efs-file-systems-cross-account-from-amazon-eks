@@ -1,13 +1,13 @@
 FROM python:3.11-slim
 
+# Set working directory
+WORKDIR /app
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     nfs-common \
     curl \
     && rm -rf /var/lib/apt/lists/*
-
-# Set working directory
-WORKDIR /app
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
@@ -17,27 +17,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app.py .
 
 # Create non-root user
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-# Create mount point directories
-RUN mkdir -p /mnt/efs-local /mnt/efs-corebank && \
-    chown -R appuser:appuser /mnt/efs-local /mnt/efs-corebank /app
-
-# Switch to non-root user
+RUN useradd -m -s /bin/bash appuser && \
+    chown -R appuser:appuser /app
 USER appuser
 
-# Set environment variables
-ENV LOCAL_EFS_PATH=/mnt/efs-local
-ENV COREBANK_EFS_PATH=/mnt/efs-corebank
-ENV DUAL_WRITE_ENABLED=true
-ENV APP_NAME=efs-test-app
+# Create EFS mount directory
+RUN mkdir -p /mnt/efs
 
 # Expose port
-EXPOSE 8080
+EXPOSE 5000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:5000/health || exit 1
 
-# Run application with gunicorn
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "120", "app:app"]
+# Run application
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "120", "app:app"]
