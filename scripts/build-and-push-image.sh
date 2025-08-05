@@ -63,7 +63,7 @@ build_and_push_for_account() {
     
     # Build Docker image
     info "Building Docker image"
-    cd "${PROJECT_ROOT}/applications/efs-test-app"
+    cd "../applications/efs-test-app"
     
     docker build \
         --build-arg BUILD_DATE="$BUILD_DATE" \
