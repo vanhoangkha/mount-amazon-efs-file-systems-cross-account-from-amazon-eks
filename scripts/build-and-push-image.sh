@@ -87,6 +87,7 @@ set_ecr_lifecycle_policy() {
             "description": "Keep last 10 images",
             "selection": {
                 "tagStatus": "tagged",
+                "tagPrefixList": ["latest", "v"],
                 "countType": "imageCountMoreThan",
                 "countNumber": 10
             },
