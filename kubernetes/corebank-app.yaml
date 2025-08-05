@@ -70,6 +70,7 @@ spec:
         app: efs-test-app
         account: corebank
     spec:
+      serviceAccountName: efs-csi-controller-sa
       containers:
         - name: efs-test-app
           image: ${IMAGE_URI}
@@ -134,5 +135,4 @@ spec:
       name: http
   selector:
     app: efs-test-app
-    account: corebank
     account: corebank

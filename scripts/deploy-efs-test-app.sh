@@ -77,10 +77,12 @@ EOF
     # Set environment variables for substitution
     export ECR_REGISTRY=""  # Empty since we include full image path
     export EFS_COREBANK_ID="$EFS_COREBANK_ID"
+    export SATELLITE_ACCESS_POINT="$SATELLITE_ACCESS_POINT"
     export ACCOUNT_ID="$account_id"
     export ACCOUNT_NAME="$account_name"
     export AWS_REGION="$AWS_REGION"
     export COREBANK_REPLICAS="${COREBANK_REPLICAS:-2}"
+    export SATELLITE_REPLICAS="${SATELLITE_REPLICAS:-1}"
     export WRITE_TIMEOUT="${WRITE_TIMEOUT:-30}"
     
     # Set account-specific variables
@@ -198,6 +200,10 @@ main() {
     # Check if required environment variables are set
     if [ -z "$EFS_COREBANK_ID" ]; then
         error "EFS_COREBANK_ID is not set. Please run deploy-efs-infrastructure.sh first."
+    fi
+    
+    if [ -z "$SATELLITE_ACCESS_POINT" ]; then
+        error "SATELLITE_ACCESS_POINT is not set. Please run deploy-efs-infrastructure.sh first."
     fi
     
     # Initialize app endpoints file
