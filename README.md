@@ -121,6 +121,7 @@ EFS_COREBANK_THROUGHPUT=1000
 Source the environment:
 ```bash
 source .env
+source ./scripts/config.sh
 ```
 
 ## 🚀 Quick Start

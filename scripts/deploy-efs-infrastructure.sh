@@ -54,7 +54,15 @@ deploy_corebank_efs() {
     
     # Wait for EFS to be available
     info "Waiting for EFS to be available..."
-    aws efs wait file-system-available --file-system-id $EFS_COREBANK_ID --region $AWS_REGION
+    while true; do
+        EFS_STATE=$(aws efs describe-file-systems --file-system-id $EFS_COREBANK_ID --region $AWS_REGION --query 'FileSystems[0].LifeCycleState' --output text)
+        if [ "$EFS_STATE" = "available" ]; then
+            info "EFS is now available"
+            break
+        fi
+        info "EFS state: $EFS_STATE, waiting..."
+        sleep 10
+    done
     
     # Get VPC and subnet information
     VPC_ID=$(aws ec2 describe-vpcs \
