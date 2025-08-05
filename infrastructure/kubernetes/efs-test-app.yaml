@@ -16,12 +16,12 @@ parameters:
   fileSystemId: ${EFS_COREBANK_ID}
   directoryPerms: "0755"
 mountOptions:
-  - nfsvers=4.1
-  - rsize=1048576
-  - wsize=1048576
-  - hard
-  - intr
-  - timeo=600
+- nfsvers=4.1
+- rsize=1048576
+- wsize=1048576
+- hard
+- intr
+- timeo=600
 ---
 
 apiVersion: v1
