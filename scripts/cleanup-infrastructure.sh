@@ -195,11 +195,11 @@ main() {
     for account in "corebank" "satellite"; do
         log "Cleaning up $account account..."
         
-        # cleanup_eks_cluster "$account"
-        # cleanup_cloudformation "$account"
+        cleanup_eks_cluster "$account"
+        cleanup_cloudformation "$account"
         cleanup_efs "$account"
-        # cleanup_ecr "$account"
-        # cleanup_iam "$account"
+        cleanup_ecr "$account"
+        cleanup_iam "$account"
     done
     
     # Remove local files
