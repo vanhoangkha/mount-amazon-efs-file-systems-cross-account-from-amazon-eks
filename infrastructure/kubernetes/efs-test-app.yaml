@@ -13,7 +13,11 @@ provisioner: efs.csi.aws.com
 parameters:
   provisioningMode: efs-ap
   fileSystemId: ${EFS_COREBANK_ID}
+  accessPoint: ${SATELLITE_ACCESS_POINT}
   directoryPerms: "0755"
+  gidRangeStart: "1001"
+  gidRangeEnd: "2000"
+  basePath: "/satellite"
 mountOptions:
   - nfsvers=4.1
   - rsize=1048576
@@ -21,6 +25,7 @@ mountOptions:
   - hard
   - intr
   - timeo=600
+  - retrans=2
 ---
 apiVersion: v1
 kind: PersistentVolume
@@ -37,6 +42,8 @@ spec:
   csi:
     driver: efs.csi.aws.com
     volumeHandle: ${EFS_VOLUME_HANDLE}
+    volumeAttributes:
+      encryptInTransit: "true"
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -77,6 +84,11 @@ spec:
         app: efs-test-app
     spec:
       serviceAccountName: efs-test-sa
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        fsGroupChangePolicy: "OnRootMismatch"
       containers:
         - name: efs-test-app
           image: ${ECR_REPOSITORY_URI}:latest
@@ -88,9 +100,12 @@ spec:
               value: "/mnt/efs-corebank"
             - name: APP_NAME
               value: "efs-test-app"
+            - name: AWS_REGION
+              value: "${AWS_REGION}"
           volumeMounts:
             - name: efs-corebank-storage
               mountPath: /mnt/efs-corebank
+              mountPropagation: None
           resources:
             requests:
               memory: "256Mi"

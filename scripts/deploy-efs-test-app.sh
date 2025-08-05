@@ -7,7 +7,28 @@ PROJECT_ROOT="."
 source ./scripts/config.sh
 
 # Load EFS infrastructure info
-if [ -f "${PROJECT_ROOT}/efs-infrastructure.env" ]; then
+if [ -f "${PRO    # Create policy for EFS cross-account access
+    cat > /tmp/$account_name-efs-policy.json << EOF
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientRootAccess",
+                "elasticfilesystem:DescribeFileSystems",
+                "elasticfilesystem:DescribeAccessPoints"
+            ],
+            "Resource": [
+                "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:file-system/$EFS_COREBANK_ID",
+                "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$access_point_id"
+            ]
+        }
+    ]
+}
+EOFastructure.env" ]; then
     source "${PROJECT_ROOT}/efs-infrastructure.env"
 fi
 
@@ -48,14 +69,26 @@ deploy_to_corebank() {
     export AWS_PROFILE="corebank"
     aws eks update-kubeconfig --region $AWS_REGION --name corebank-cluster --alias corebank-cluster
     
+    # Create EFS CSI driver service account if not exists
+    info "Ensuring EFS CSI driver service account exists"
+    eksctl create iamserviceaccount \
+        --cluster="corebank-cluster" \
+        --namespace=kube-system \
+        --name=efs-csi-controller-sa \
+        --attach-policy-arn=arn:aws:iam::aws:policy/AmazonElasticFileSystemClientFullAccess \
+        --approve \
+        --override-existing-serviceaccounts \
+        --region=$AWS_REGION || info "Service account already exists"
+    
     # Create temporary manifest with substituted values
     info "Creating CoreBank deployment manifest"
     cat "${PROJECT_ROOT}/infrastructure/kubernetes/efs-test-app.yaml" | \
-    sed "s/\${EFS_LOCAL_ID}/fs-dummy-local/g" | \
     sed "s/\${EFS_COREBANK_ID}/$EFS_COREBANK_ID/g" | \
+    sed "s/\${SATELLITE_ACCESS_POINT}//g" | \
     sed "s/\${EFS_VOLUME_HANDLE}/$EFS_COREBANK_ID/g" | \
     sed "s/\${ECR_REPOSITORY_URI}/${COREBANK_ECR_URI//\//\\/}/g" | \
-    sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/arn:aws:iam::$COREBANK_ACCOUNT:role\/EKSServiceRole/g" \
+    sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/arn:aws:iam::$COREBANK_ACCOUNT:role\/EKSServiceRole/g" | \
+    sed "s/\${AWS_REGION}/$AWS_REGION/g" \
     > /tmp/corebank-efs-test-app.yaml
     
     # Apply manifest
@@ -85,7 +118,6 @@ deploy_to_satellite() {
     local account_name=$2
     local ecr_uri=$3
     local access_point_id=$4
-    local local_efs_id=$5
     
     log "Deploying EFS Test App to $account_name cluster..."
     
@@ -93,10 +125,24 @@ deploy_to_satellite() {
     export AWS_PROFILE="$account_name"
     aws eks update-kubeconfig --region $AWS_REGION --name "$account_name-cluster" --alias "$account_name-cluster"
     
+    # Get OIDC issuer for the cluster
+    OIDC_ISSUER=$(aws eks describe-cluster --name "$account_name-cluster" --region $AWS_REGION --query 'cluster.identity.oidc.issuer' --output text | sed 's|https://||')
+    
+    # Create EFS CSI driver service account if not exists
+    info "Ensuring EFS CSI driver service account exists for $account_name"
+    eksctl create iamserviceaccount \
+        --cluster="$account_name-cluster" \
+        --namespace=kube-system \
+        --name=efs-csi-controller-sa \
+        --attach-policy-arn=arn:aws:iam::aws:policy/AmazonElasticFileSystemClientFullAccess \
+        --approve \
+        --override-existing-serviceaccounts \
+        --region=$AWS_REGION || info "Service account already exists"
+    
     # Create cross-account IAM role for EFS access
     info "Creating cross-account IAM role for $account_name"
     
-    # Create trust policy
+    # Create trust policy for IRSA
     cat > /tmp/$account_name-trust-policy.json << EOF
 {
     "Version": "2012-10-17",
@@ -104,13 +150,13 @@ deploy_to_satellite() {
         {
             "Effect": "Allow",
             "Principal": {
-                "Federated": "arn:aws:iam::$account_id:oidc-provider/$(aws eks describe-cluster --name $account_name-cluster --region $AWS_REGION --query 'cluster.identity.oidc.issuer' --output text | sed 's|https://||')"
+                "Federated": "arn:aws:iam::$account_id:oidc-provider/$OIDC_ISSUER"
             },
             "Action": "sts:AssumeRoleWithWebIdentity",
             "Condition": {
                 "StringEquals": {
-                    "$(aws eks describe-cluster --name $account_name-cluster --region $AWS_REGION --query 'cluster.identity.oidc.issuer' --output text | sed 's|https://||'):sub": "system:serviceaccount:efs-test:efs-test-sa",
-                    "$(aws eks describe-cluster --name $account_name-cluster --region $AWS_REGION --query 'cluster.identity.oidc.issuer' --output text | sed 's|https://||'):aud": "sts.amazonaws.com"
+                    "$OIDC_ISSUER:sub": "system:serviceaccount:efs-test:efs-test-sa",
+                    "$OIDC_ISSUER:aud": "sts.amazonaws.com"
                 }
             }
         }
@@ -153,18 +199,19 @@ EOF
     # Attach policy to role
     aws iam put-role-policy \
         --role-name "$account_name-EFS-CrossAccount-Role" \
-        --policy-name "EFS-Access-Policy" \
+        --policy-name "EFS-CrossAccount-Access-Policy" \
         --policy-document file:///tmp/$account_name-efs-policy.json \
         --region $AWS_REGION
     
     # Create temporary manifest with substituted values
     info "Creating $account_name deployment manifest"
     cat "${PROJECT_ROOT}/infrastructure/kubernetes/efs-test-app.yaml" | \
-    sed "s/\${EFS_LOCAL_ID}/$local_efs_id/g" | \
     sed "s/\${EFS_COREBANK_ID}/$EFS_COREBANK_ID/g" | \
+    sed "s/\${SATELLITE_ACCESS_POINT}/$access_point_id/g" | \
     sed "s/\${EFS_VOLUME_HANDLE}/$EFS_COREBANK_ID::$access_point_id/g" | \
     sed "s/\${ECR_REPOSITORY_URI}/${ecr_uri//\//\\/}/g" | \
-    sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/${ROLE_ARN//\//\\/}/g" \
+    sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/${ROLE_ARN//\//\\/}/g" | \
+    sed "s/\${AWS_REGION}/$AWS_REGION/g" \
     > /tmp/$account_name-efs-test-app.yaml
     
     # Apply manifest
@@ -243,7 +290,7 @@ main() {
     deploy_to_corebank
     
     # Deploy to Satellite
-    deploy_to_satellite "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_ECR_URI" "$SATELLITE_ACCESS_POINT" "dummy-local-efs"
+    deploy_to_satellite "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_ECR_URI" "$SATELLITE_ACCESS_POINT"
     
     # Wait for load balancers to be ready
     info "Waiting for load balancers to be ready..."

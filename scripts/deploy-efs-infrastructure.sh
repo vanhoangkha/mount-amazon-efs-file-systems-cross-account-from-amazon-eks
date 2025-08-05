@@ -97,13 +97,41 @@ deploy_corebank_efs() {
         --query 'GroupId' \
         --output text)
     
-    # Add NFS rule to security group
+    # Add NFS rule to security group for VPC CIDR
+    VPC_CIDR=$(aws ec2 describe-vpcs \
+        --vpc-ids $VPC_ID \
+        --query 'Vpcs[0].CidrBlock' \
+        --output text \
+        --region $AWS_REGION)
+        
+    aws ec2 authorize-security-group-ingress \
+        --group-id $EFS_SG_ID \
+        --protocol tcp \
+        --port 2049 \
+        --cidr $VPC_CIDR \
+        --region $AWS_REGION
+    
+    # Add broader private CIDR ranges for cross-account access
     aws ec2 authorize-security-group-ingress \
         --group-id $EFS_SG_ID \
         --protocol tcp \
         --port 2049 \
         --cidr 10.0.0.0/8 \
-        --region $AWS_REGION
+        --region $AWS_REGION || true
+        
+    aws ec2 authorize-security-group-ingress \
+        --group-id $EFS_SG_ID \
+        --protocol tcp \
+        --port 2049 \
+        --cidr 172.16.0.0/12 \
+        --region $AWS_REGION || true
+        
+    aws ec2 authorize-security-group-ingress \
+        --group-id $EFS_SG_ID \
+        --protocol tcp \
+        --port 2049 \
+        --cidr 192.168.0.0/16 \
+        --region $AWS_REGION || true
     
     # Create mount targets
     info "Creating EFS mount targets"
@@ -121,11 +149,23 @@ deploy_corebank_efs() {
     SATELLITE_ACCESS_POINT=$(aws efs create-access-point \
         --file-system-id $EFS_COREBANK_ID \
         --posix-user Uid=1001,Gid=1001 \
-        --root-directory Path="/satellite",CreationInfo='{OwnerUid=1001,OwnerGid=1001,Permissions=755}' \
-        --tags Key=Name,Value=Satellite-AccessPoint \
+        --root-directory Path="/satellite",CreationInfo='{OwnerUid=1001,OwnerGid=1001,Permissions=0755}' \
+        --tags Key=Name,Value=Satellite-AccessPoint Key=Account,Value=satellite \
         --region $AWS_REGION \
         --query 'AccessPointId' \
         --output text)
+    
+    # Wait for access point to be available
+    info "Waiting for access point to be available..."
+    while true; do
+        AP_STATE=$(aws efs describe-access-points --access-point-ids $SATELLITE_ACCESS_POINT --region $AWS_REGION --query 'AccessPoints[0].LifeCycleState' --output text)
+        if [ "$AP_STATE" = "available" ]; then
+            info "Access point is now available"
+            break
+        fi
+        info "Access point state: $AP_STATE, waiting..."
+        sleep 5
+    done
     
     info "Access point created:"
     info "  Satellite: $SATELLITE_ACCESS_POINT"
@@ -137,7 +177,7 @@ deploy_corebank_efs() {
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "AllowCrossAccountAccess",
+            "Sid": "AllowCrossAccountAccessViaSatelliteAccessPoint",
             "Effect": "Allow",
             "Principal": {
                 "AWS": [
@@ -149,14 +189,23 @@ deploy_corebank_efs() {
                 "elasticfilesystem:ClientWrite",
                 "elasticfilesystem:ClientRootAccess"
             ],
-            "Resource": "*",
+            "Resource": "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:file-system/$EFS_COREBANK_ID",
             "Condition": {
                 "StringEquals": {
-                    "elasticfilesystem:AccessPointArn": [
-                        "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$SATELLITE_ACCESS_POINT"
-                    ]
+                    "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:access-point/$SATELLITE_ACCESS_POINT"
                 }
             }
+        },
+        {
+            "Sid": "AllowCoreAccountFullAccess",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::$COREBANK_ACCOUNT:root"
+            },
+            "Action": [
+                "elasticfilesystem:*"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:file-system/$EFS_COREBANK_ID"
         }
     ]
 }
