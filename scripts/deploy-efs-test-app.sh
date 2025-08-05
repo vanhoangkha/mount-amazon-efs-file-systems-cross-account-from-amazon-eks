@@ -62,22 +62,11 @@ deploy_application() {
     info "Verifying cluster connectivity"
     kubectl get nodes
     
-    # Create namespace if it doesn't exist
-    info "Creating namespace"
-    kubectl apply -f - << EOF
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: efs-test
-  labels:
-    name: efs-test
-    purpose: efs-testing
-EOF
+    # Note: Using default namespace, no need to create custom namespace
     
     # Set environment variables for substitution
     export ECR_REGISTRY=""  # Empty since we include full image path
     export EFS_COREBANK_ID="$EFS_COREBANK_ID"
-    export SATELLITE_ACCESS_POINT="$SATELLITE_ACCESS_POINT"
     export ACCOUNT_ID="$account_id"
     export ACCOUNT_NAME="$account_name"
     export AWS_REGION="$AWS_REGION"
@@ -89,6 +78,7 @@ EOF
     if [ "$account_name" = "corebank" ]; then
         export IMAGE_URI="$COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     else
+        export SATELLITE_ACCOUNT="$SATELLITE_ACCOUNT"  # For satellite image URI
         export IMAGE_URI="$SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     fi
     
@@ -102,7 +92,7 @@ EOF
     
     # Wait for deployment to be ready
     info "Waiting for deployment to be ready (timeout: 5 minutes)"
-    kubectl wait --for=condition=available --timeout=300s deployment/efs-test-app-$account_name -n efs-test
+    kubectl wait --for=condition=available --timeout=300s deployment/efs-test-app-$account_name -n default
     
     # Get service endpoint
     info "Getting service endpoint"
@@ -111,13 +101,13 @@ EOF
     local attempt=0
     
     while [ $attempt -lt $max_attempts ]; do
-        endpoint=$(kubectl get svc efs-test-app-$account_name-service -n efs-test -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
+        endpoint=$(kubectl get svc efs-test-app-$account_name-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || echo "")
         if [ -n "$endpoint" ]; then
             break
         fi
         
         # Try IP if hostname is not available
-        endpoint=$(kubectl get svc efs-test-app-$account_name-service -n efs-test -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
+        endpoint=$(kubectl get svc efs-test-app-$account_name-service -n default -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || echo "")
         if [ -n "$endpoint" ]; then
             break
         fi
@@ -130,7 +120,7 @@ EOF
     if [ -z "$endpoint" ]; then
         warn "LoadBalancer endpoint not available after 5 minutes"
         # Get the service details for debugging
-        kubectl describe svc efs-test-app-$account_name-service -n efs-test
+        kubectl describe svc efs-test-app-$account_name-service -n default
         endpoint="pending"
     else
         info "Service endpoint: http://$endpoint"
@@ -141,11 +131,11 @@ EOF
     
     # Show pod status
     info "Pod status:"
-    kubectl get pods -n efs-test -l account=$account_name
+    kubectl get pods -n default -l account=$account_name
     
     # Show recent logs
     info "Recent application logs:"
-    kubectl logs -n efs-test -l account=$account_name --tail=10 || true
+    kubectl logs -n default -l account=$account_name --tail=10 || true
     
     log "✓ Application deployed successfully to $account_name cluster"
     
@@ -202,9 +192,7 @@ main() {
         error "EFS_COREBANK_ID is not set. Please run deploy-efs-infrastructure.sh first."
     fi
     
-    if [ -z "$SATELLITE_ACCESS_POINT" ]; then
-        error "SATELLITE_ACCESS_POINT is not set. Please run deploy-efs-infrastructure.sh first."
-    fi
+    # Note: SATELLITE_ACCESS_POINT no longer needed with dynamic provisioning
     
     # Initialize app endpoints file
     > "${PROJECT_ROOT}/app-endpoints.env"
@@ -238,7 +226,7 @@ main() {
     log ""
     log "Next steps:"
     log "1. Run tests: ./scripts/test-efs-cross-account.sh"
-    log "2. Monitor applications: kubectl get pods -n efs-test"
+    log "2. Monitor applications: kubectl get pods -n default"
 }
 
 # Run main function
