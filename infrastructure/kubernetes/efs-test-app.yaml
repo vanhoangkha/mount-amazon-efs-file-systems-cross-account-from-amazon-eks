@@ -5,7 +5,6 @@ metadata:
   labels:
     name: efs-test
 ---
-
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -16,14 +15,13 @@ parameters:
   fileSystemId: ${EFS_COREBANK_ID}
   directoryPerms: "0755"
 mountOptions:
-- nfsvers=4.1
-- rsize=1048576
-- wsize=1048576
-- hard
-- intr
-- timeo=600
+  - nfsvers=4.1
+  - rsize=1048576
+  - wsize=1048576
+  - hard
+  - intr
+  - timeo=600
 ---
-
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -40,7 +38,6 @@ spec:
     driver: efs.csi.aws.com
     volumeHandle: ${EFS_COREBANK_ID}::${EFS_ACCESS_POINT_ID}
 ---
-
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -81,66 +78,66 @@ spec:
     spec:
       serviceAccountName: efs-test-sa
       containers:
-      - name: efs-test-app
-        image: ${ECR_REPOSITORY_URI}:latest
-        ports:
-        - containerPort: 8080
-          name: http
-        env:
-        - name: COREBANK_EFS_PATH
-          value: "/mnt/efs-corebank"
-        - name: APP_NAME
-          value: "efs-test-app"
-        volumeMounts:
-        - name: efs-corebank-storage
-          mountPath: /mnt/efs-corebank
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "512Mi"
-            cpu: "500m"
-        livenessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 2
-        startupProbe:
-          httpGet:
-            path: /health
-            port: 8080
-          initialDelaySeconds: 10
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 10
+        - name: efs-test-app
+          image: ${ECR_REPOSITORY_URI}:latest
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: COREBANK_EFS_PATH
+              value: "/mnt/efs-corebank"
+            - name: APP_NAME
+              value: "efs-test-app"
+          volumeMounts:
+            - name: efs-corebank-storage
+              mountPath: /mnt/efs-corebank
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 10
       volumes:
-      - name: efs-corebank-storage
-        persistentVolumeClaim:
-          claimName: efs-corebank-pvc
+        - name: efs-corebank-storage
+          persistentVolumeClaim:
+            claimName: efs-corebank-pvc
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
-          - weight: 100
-            podAffinityTerm:
-              labelSelector:
-                matchExpressions:
-                - key: app
-                  operator: In
-                  values:
-                  - efs-test-app
-              topologyKey: kubernetes.io/hostname
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - efs-test-app
+                topologyKey: kubernetes.io/hostname
 ---
 apiVersion: v1
 kind: Service
@@ -152,10 +149,10 @@ metadata:
 spec:
   type: LoadBalancer
   ports:
-  - port: 80
-    targetPort: 8080
-    protocol: TCP
-    name: http
+    - port: 80
+      targetPort: 8080
+      protocol: TCP
+      name: http
   selector:
     app: efs-test-app
 ---
@@ -172,15 +169,15 @@ spec:
   minReplicas: 2
   maxReplicas: 10
   metrics:
-  - type: Resource
-    resource:
-      name: cpu
-      target:
-        type: Utilization
-        averageUtilization: 70
-  - type: Resource
-    resource:
-      name: memory
-      target:
-        type: Utilization
-        averageUtilization: 80
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
