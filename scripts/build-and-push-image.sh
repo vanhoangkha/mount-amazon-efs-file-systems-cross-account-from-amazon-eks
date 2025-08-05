@@ -137,12 +137,12 @@ main() {
     
     # Build and push for CoreBank account
     log "Building for CoreBank account..."
-    COREBANK_ECR_URI="${COREBANK_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${IMAGE_TAG}"
+    COREBANK_ECR_URI="${COREBANK_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
     build_and_push_for_account "$COREBANK_ACCOUNT" "corebank"
     
     # Build and push for Satellite account
     log "Building for Satellite account..."
-    SATELLITE_ECR_URI="${SATELLITE_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}:${IMAGE_TAG}"
+    SATELLITE_ECR_URI="${SATELLITE_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
     build_and_push_for_account "$SATELLITE_ACCOUNT" "satellite"
     
     # Save ECR URIs to file for deployment scripts
