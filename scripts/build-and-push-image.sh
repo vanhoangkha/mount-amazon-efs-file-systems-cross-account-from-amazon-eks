@@ -92,6 +92,7 @@ build_and_push_for_account() {
                     "description": "Keep last 10 images",
                     "selection": {
                         "tagStatus": "tagged",
+                        "tagPrefixList": ["latest", "v"],
                         "countType": "imageCountMoreThan",
                         "countNumber": 10
                     },
