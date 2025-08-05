@@ -58,15 +58,12 @@ build_and_push_image() {
     local image_tag="$account_id.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     info "Building Docker image: $image_tag"
     
-    cd "$(dirname "$0")/../applications/efs-test-app"
-    docker build -t efs-test-app .
+    docker build -f "${PROJECT_ROOT}/applications/efs-test-app/Dockerfile" -t efs-test-app "${PROJECT_ROOT}/applications/efs-test-app"
     docker tag efs-test-app:latest $image_tag
     
     # Push image to ECR
     info "Pushing image to ECR"
     docker push $image_tag
-    
-    cd "$(dirname "$0")/.."
     
     log "✓ Docker image built and pushed for $account_name account"
     echo "Image: $image_tag"
