@@ -12,7 +12,7 @@ metadata:
 provisioner: efs.csi.aws.com
 parameters:
   provisioningMode: efs-ap
-  fileSystemId: ${EFS_COREBANK_ID}
+  fileSystemId: fs-058dcf48257cce1a8
   directoryPerms: "0755"
 mountOptions:
   - nfsvers=4.1
@@ -36,7 +36,7 @@ spec:
   storageClassName: efs-corebank-sc
   csi:
     driver: efs.csi.aws.com
-    volumeHandle: ${EFS_VOLUME_HANDLE}
+    volumeHandle: fs-058dcf48257cce1a8::
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -57,7 +57,7 @@ metadata:
   name: efs-test-sa
   namespace: efs-test
   annotations:
-    eks.amazonaws.com/role-arn: ${EFS_CROSS_ACCOUNT_ROLE_ARN}
+    eks.amazonaws.com/role-arn: arn:aws:iam::590183822512:role/EKSServiceRole
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -79,7 +79,7 @@ spec:
       serviceAccountName: efs-test-sa
       containers:
         - name: efs-test-app
-          image: ${ECR_REPOSITORY_URI}:latest
+          image: 590183822512.dkr.ecr.ap-northeast-2.amazonaws.com/efs-test-app:latest
           ports:
             - containerPort: 8080
               name: http

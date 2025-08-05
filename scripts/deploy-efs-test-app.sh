@@ -53,7 +53,7 @@ deploy_to_corebank() {
     cat "${PROJECT_ROOT}/infrastructure/kubernetes/efs-test-app.yaml" | \
     sed "s/\${EFS_LOCAL_ID}/fs-dummy-local/g" | \
     sed "s/\${EFS_COREBANK_ID}/$EFS_COREBANK_ID/g" | \
-    sed "s/\${EFS_ACCESS_POINT_ID}//g" | \
+    sed "s/\${EFS_VOLUME_HANDLE}/$EFS_COREBANK_ID/g" | \
     sed "s/\${ECR_REPOSITORY_URI}/${COREBANK_ECR_URI//\//\\/}/g" | \
     sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/arn:aws:iam::$COREBANK_ACCOUNT:role\/EKSServiceRole/g" \
     > /tmp/corebank-efs-test-app.yaml
@@ -162,7 +162,7 @@ EOF
     cat "${PROJECT_ROOT}/infrastructure/kubernetes/efs-test-app.yaml" | \
     sed "s/\${EFS_LOCAL_ID}/$local_efs_id/g" | \
     sed "s/\${EFS_COREBANK_ID}/$EFS_COREBANK_ID/g" | \
-    sed "s/\${EFS_ACCESS_POINT_ID}/$access_point_id/g" | \
+    sed "s/\${EFS_VOLUME_HANDLE}/$EFS_COREBANK_ID::$access_point_id/g" | \
     sed "s/\${ECR_REPOSITORY_URI}/${ecr_uri//\//\\/}/g" | \
     sed "s/\${EFS_CROSS_ACCOUNT_ROLE_ARN}/${ROLE_ARN//\//\\/}/g" \
     > /tmp/$account_name-efs-test-app.yaml
