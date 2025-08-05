@@ -50,7 +50,6 @@ spec:
         app: efs-test-app
         account: satellite
     spec:
-      serviceAccountName: efs-csi-controller-sa
       containers:
         - name: efs-test-app
           image: ${ECR_REGISTRY}/${SATELLITE_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/efs-test-app:latest
