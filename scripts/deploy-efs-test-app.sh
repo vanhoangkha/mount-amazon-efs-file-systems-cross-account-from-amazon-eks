@@ -76,6 +76,19 @@ EOF
     
     # Set environment variables for substitution
     export ECR_REGISTRY=""  # Empty since we include full image path
+    export EFS_ID="$EFS_COREBANK_ID"
+    export ACCOUNT_ID="$account_id"
+    export ACCOUNT_NAME="$account_name"
+    export AWS_REGION="$AWS_REGION"
+    export COREBANK_REPLICAS="${COREBANK_REPLICAS:-2}"
+    export WRITE_TIMEOUT="${WRITE_TIMEOUT:-30}"
+    
+    # Set account-specific variables
+    if [ "$account_name" = "corebank" ]; then
+        export IMAGE_URI="$COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
+    else
+        export IMAGE_URI="$SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
+    fi
     
     # Substitute environment variables in manifest
     local temp_manifest="/tmp/$account_name-app-manifest.yaml"
