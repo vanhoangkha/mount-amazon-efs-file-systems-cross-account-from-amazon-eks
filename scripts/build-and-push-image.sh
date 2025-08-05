@@ -3,6 +3,7 @@
 # Build and Push EFS Test App to ECR
 set -e
 
+PROJECT_ROOT="."
 source ./scripts/config.sh
 
 # Colors for output

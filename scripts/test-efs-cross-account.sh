@@ -3,6 +3,7 @@
 # Test EFS Cross-Account Functionality
 set -e
 
+PROJECT_ROOT="."
 source ./scripts/config.sh
 
 # Load application endpoints

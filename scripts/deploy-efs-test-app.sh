@@ -3,6 +3,7 @@
 # Deploy EFS Test Application to EKS Clusters
 set -e
 
+PROJECT_ROOT="."
 source ./scripts/config.sh
 
 # Load EFS infrastructure info
