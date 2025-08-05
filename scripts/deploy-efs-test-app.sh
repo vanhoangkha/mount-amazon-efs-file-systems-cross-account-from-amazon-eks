@@ -76,7 +76,7 @@ EOF
     
     # Set environment variables for substitution
     export ECR_REGISTRY=""  # Empty since we include full image path
-    export EFS_ID="$EFS_COREBANK_ID"
+    export EFS_COREBANK_ID="$EFS_COREBANK_ID"
     export ACCOUNT_ID="$account_id"
     export ACCOUNT_NAME="$account_name"
     export AWS_REGION="$AWS_REGION"
