@@ -158,7 +158,7 @@ deploy_corebank_efs() {
     # Wait for access point to be available
     info "Waiting for access point to be available..."
     while true; do
-        AP_STATE=$(aws efs describe-access-points --access-point-ids $SATELLITE_ACCESS_POINT --region $AWS_REGION --query 'AccessPoints[0].LifeCycleState' --output text)
+        AP_STATE=$(aws efs describe-access-points --access-point-id $SATELLITE_ACCESS_POINT --region $AWS_REGION --query 'AccessPoints[0].LifeCycleState' --output text)
         if [ "$AP_STATE" = "available" ]; then
             info "Access point is now available"
             break
