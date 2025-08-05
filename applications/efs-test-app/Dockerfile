@@ -16,13 +16,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app.py .
 
+# Create EFS mount directory with proper permissions
+RUN mkdir -p /mnt/efs
+
 # Create non-root user
 RUN useradd -m -s /bin/bash appuser && \
-    chown -R appuser:appuser /app
+    chown -R appuser:appuser /app && \
+    chown -R appuser:appuser /mnt/efs
 USER appuser
-
-# Create EFS mount directory
-RUN mkdir -p /mnt/efs
 
 # Expose port
 EXPOSE 5000
