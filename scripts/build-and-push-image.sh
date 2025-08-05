@@ -63,7 +63,8 @@ build_and_push_for_account() {
     
     # Build Docker image
     info "Building Docker image"
-    cd ./applications/efs-test-app
+    local original_dir=$(pwd)
+    cd "${PROJECT_ROOT}/applications/efs-test-app"
     
     docker build \
         --build-arg BUILD_DATE="$BUILD_DATE" \
@@ -73,6 +74,8 @@ build_and_push_for_account() {
         --tag $ecr_repo:$IMAGE_TAG \
         --tag $ecr_repo:$GIT_COMMIT \
         .
+    
+    cd "$original_dir"
     
     # Push images to ECR
     info "Pushing images to ECR"
