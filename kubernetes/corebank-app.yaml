@@ -70,10 +70,9 @@ spec:
         app: efs-test-app
         account: corebank
     spec:
-      serviceAccountName: efs-csi-controller-sa
       containers:
         - name: efs-test-app
-          image: ${ECR_REGISTRY}/${COREBANK_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/efs-test-app:latest
+          image: ${IMAGE_URI}
           ports:
             - containerPort: 5000
               name: http
@@ -135,4 +134,5 @@ spec:
       name: http
   selector:
     app: efs-test-app
+    account: corebank
     account: corebank
