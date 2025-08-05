@@ -286,7 +286,7 @@ main() {
     log "  Satellite Access Point: $(grep SATELLITE_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
     log ""
     log "Next steps:"
-    log "1. Deploy EKS clusters: ./scripts/deploy-eks-clusters.sh"
+    log "1. Build and push images: ./scripts/build-and-push-image.sh"
     log "2. Deploy test applications: ./scripts/deploy-efs-test-app.sh"
 }
 

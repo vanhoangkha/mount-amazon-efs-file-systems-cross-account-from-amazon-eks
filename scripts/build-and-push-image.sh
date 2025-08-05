@@ -116,9 +116,6 @@ build_and_push_for_account() {
         }'
     
     log "✓ Successfully built and pushed image for $account_name: $ecr_repo:$IMAGE_TAG"
-    
-    # Return ECR URI for use in deployment
-    echo "$ecr_repo:$IMAGE_TAG"
 }
 
 # Main function
@@ -135,10 +132,14 @@ main() {
     fi
     
     # Build and push for CoreBank account
-    COREBANK_ECR_URI=$(build_and_push_for_account "$COREBANK_ACCOUNT" "corebank")
+    log "Building for CoreBank account..."
+    COREBANK_ECR_URI="${COREBANK_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
+    build_and_push_for_account "$COREBANK_ACCOUNT" "corebank"
     
     # Build and push for Satellite account
-    SATELLITE_ECR_URI=$(build_and_push_for_account "$SATELLITE_ACCOUNT" "satellite")
+    log "Building for Satellite account..."
+    SATELLITE_ECR_URI="${SATELLITE_ACCOUNT}.dkr.ecr.${AWS_REGION}.amazonaws.com/${APP_NAME}"
+    build_and_push_for_account "$SATELLITE_ACCOUNT" "satellite"
     
     # Save ECR URIs to file for deployment scripts
     cat > "${PROJECT_ROOT}/ecr-uris.env" << EOF
@@ -153,8 +154,7 @@ EOF
     log "  Satellite: $SATELLITE_ECR_URI"
     log ""
     log "Next steps:"
-    log "1. Deploy EFS infrastructure: ./scripts/deploy-efs-infrastructure.sh"
-    log "2. Deploy applications: ./scripts/deploy-efs-test-app.sh"
+    log "1. Deploy applications: ./scripts/deploy-efs-test-app.sh"
 }
 
 # Run main function
