@@ -68,17 +68,105 @@ deploy_eks_cluster() {
     local private_subnets="${!private_subnets_var}"
     local public_subnets="${!public_subnets_var}"
     
+    # If deployment environment variables are empty, try to get them from AWS directly
+    if [[ -z "$vpc_id" ]]; then
+        warn "VPC ID not found in deployment environment, attempting to discover from AWS..."
+        vpc_id=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:Name,Values=$account_name-vpc" \
+            --query 'Vpcs[0].VpcId' \
+            --output text \
+            --region $AWS_REGION 2>/dev/null || echo "")
+        
+        if [[ -z "$vpc_id" || "$vpc_id" == "None" ]]; then
+            error "VPC not found for $account_name. Please run deploy-vpc.sh first or check your AWS_PROFILE settings."
+        fi
+        
+        info "Discovered VPC ID from AWS: $vpc_id"
+    fi
+    
+    # If subnet information is missing, try to get it from CloudFormation stack
+    if [[ -z "$private_subnets" || -z "$public_subnets" ]]; then
+        warn "Subnet information not found in deployment environment, attempting to discover from CloudFormation..."
+        
+        # Check if CloudFormation stack exists
+        local stack_exists=$(aws cloudformation describe-stacks \
+            --stack-name "$account_name-vpc" \
+            --region $AWS_REGION \
+            --query 'Stacks[0].StackName' \
+            --output text 2>/dev/null || echo "")
+        
+        if [[ -n "$stack_exists" && "$stack_exists" != "None" ]]; then
+            private_subnets=$(aws cloudformation describe-stacks \
+                --stack-name "$account_name-vpc" \
+                --region $AWS_REGION \
+                --query 'Stacks[0].Outputs[?starts_with(OutputKey, `PrivateSubnet`) && ends_with(OutputKey, `Id`)].OutputValue' \
+                --output text | tr '\t' ',' 2>/dev/null || echo "")
+            
+            public_subnets=$(aws cloudformation describe-stacks \
+                --stack-name "$account_name-vpc" \
+                --region $AWS_REGION \
+                --query 'Stacks[0].Outputs[?starts_with(OutputKey, `PublicSubnet`) && ends_with(OutputKey, `Id`)].OutputValue' \
+                --output text | tr '\t' ',' 2>/dev/null || echo "")
+            
+            info "Discovered subnets from CloudFormation stack"
+            
+            # Update deployment environment for future use
+            update_deployment_env "${account_name^^}_VPC_ID" "$vpc_id"
+            update_deployment_env "${account_name^^}_PRIVATE_SUBNETS" "$private_subnets"
+            update_deployment_env "${account_name^^}_PUBLIC_SUBNETS" "$public_subnets"
+        else
+            # Try to discover subnets by tags as last resort
+            warn "CloudFormation stack not found, attempting to discover subnets by tags..."
+            private_subnets=$(aws ec2 describe-subnets \
+                --filters "Name=vpc-id,Values=$vpc_id" "Name=tag:Type,Values=private" \
+                --query 'Subnets[].SubnetId' \
+                --output text \
+                --region $AWS_REGION 2>/dev/null | tr '\t' ',' || echo "")
+            
+            public_subnets=$(aws ec2 describe-subnets \
+                --filters "Name=vpc-id,Values=$vpc_id" "Name=tag:Type,Values=public" \
+                --query 'Subnets[].SubnetId' \
+                --output text \
+                --region $AWS_REGION 2>/dev/null | tr '\t' ',' || echo "")
+            
+            if [[ -n "$private_subnets" || -n "$public_subnets" ]]; then
+                info "Discovered subnets by tags"
+                # Update deployment environment for future use
+                update_deployment_env "${account_name^^}_VPC_ID" "$vpc_id"
+                update_deployment_env "${account_name^^}_PRIVATE_SUBNETS" "$private_subnets"
+                update_deployment_env "${account_name^^}_PUBLIC_SUBNETS" "$public_subnets"
+            fi
+        fi
+    fi
+    
     if [[ -z "$vpc_id" ]]; then
         error "VPC ID not found for $account_name. Please run deploy-vpc.sh first."
+    fi
+    
+    if [[ -z "$private_subnets" ]]; then
+        error "Private subnets not found for $account_name. Please run deploy-vpc.sh first."
+    fi
+    
+    if [[ -z "$public_subnets" ]]; then
+        error "Public subnets not found for $account_name. Please run deploy-vpc.sh first."
     fi
     
     # Convert comma-separated subnet lists to arrays
     IFS=',' read -ra private_subnet_array <<< "$private_subnets"
     IFS=',' read -ra public_subnet_array <<< "$public_subnets"
     
+    # Validate we have enough subnets
+    if [[ ${#private_subnet_array[@]} -lt 2 ]]; then
+        error "Insufficient private subnets for $account_name. Found ${#private_subnet_array[@]}, need at least 2."
+    fi
+    
+    if [[ ${#public_subnet_array[@]} -lt 2 ]]; then
+        error "Insufficient public subnets for $account_name. Found ${#public_subnet_array[@]}, need at least 2."
+    fi
+    
     info "Using existing VPC: $vpc_id"
-    info "Private subnets: $private_subnets"
-    info "Public subnets: $public_subnets"
+    info "Private subnets (${#private_subnet_array[@]}): $private_subnets"
+    info "Public subnets (${#public_subnet_array[@]}): $public_subnets"
     
     # Create cluster configuration using existing VPC
     info "Creating EKS cluster configuration for $account_name with existing VPC: $vpc_id"
@@ -97,14 +185,26 @@ vpc:
     privateAccess: true
     publicAccess: true
   subnets:
-    private:
-      ${private_subnet_array[0]}: { }
-      ${private_subnet_array[1]}: { }
-      ${private_subnet_array[2]}: { }
-    public:
-      ${public_subnet_array[0]}: { }
-      ${public_subnet_array[1]}: { }
-      ${public_subnet_array[2]}: { }
+EOF
+
+    # Add private subnets dynamically
+    if [[ ${#private_subnet_array[@]} -gt 0 ]]; then
+        echo "    private:" >> /tmp/$account_name-cluster.yaml
+        for subnet in "${private_subnet_array[@]}"; do
+            echo "      $subnet: { }" >> /tmp/$account_name-cluster.yaml
+        done
+    fi
+
+    # Add public subnets dynamically  
+    if [[ ${#public_subnet_array[@]} -gt 0 ]]; then
+        echo "    public:" >> /tmp/$account_name-cluster.yaml
+        for subnet in "${public_subnet_array[@]}"; do
+            echo "      $subnet: { }" >> /tmp/$account_name-cluster.yaml
+        done
+    fi
+
+    # Continue with the rest of the YAML
+    cat >> /tmp/$account_name-cluster.yaml << EOF
 
 iam:
   withOIDC: true
