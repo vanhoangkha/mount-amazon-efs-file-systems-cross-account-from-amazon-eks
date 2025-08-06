@@ -7,9 +7,6 @@ provisioner: efs.csi.aws.com
 parameters:
   provisioningMode: efs-sc
   fileSystemId: ${EFS_COREBANK_ID}
-  directoryPerms: "0755"
-  uid: "1000"
-  gid: "1000"
 
 ---
 apiVersion: v1
@@ -128,9 +125,5 @@ spec:
   csi:
     driver: efs.csi.aws.com
     volumeHandle: ${EFS_COREBANK_ID}
-    volumeAttributes:
-      uid: "1000"
-      gid: "1000"
-      directoryPerms: "0755"
   mountOptions:
     - iam

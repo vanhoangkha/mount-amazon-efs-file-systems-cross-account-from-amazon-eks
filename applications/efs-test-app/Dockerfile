@@ -19,12 +19,6 @@ COPY app.py .
 # Create EFS mount directory with proper permissions
 RUN mkdir -p /mnt/efs
 
-# Create non-root user
-RUN useradd -m -s /bin/bash appuser && \
-    chown -R appuser:appuser /app && \
-    chown -R appuser:appuser /mnt/efs
-USER appuser
-
 # Expose port
 EXPOSE 5000
 
