@@ -5,7 +5,7 @@ metadata:
   name: efs-sc-corebank
 provisioner: efs.csi.aws.com
 parameters:
-  provisioningMode: efs-ap
+  provisioningMode: efs-sc
   fileSystemId: ${EFS_COREBANK_ID}
   directoryPerms: "0755"
   uid: "1000"
@@ -111,3 +111,26 @@ spec:
   selector:
     app: efs-test-app
     account: corebank
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: efs-pv-corebank
+spec:
+  capacity:
+    storage: 100Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: ""
+  csi:
+    driver: efs.csi.aws.com
+    volumeHandle: ${EFS_COREBANK_ID}
+    volumeAttributes:
+      uid: "1000"
+      gid: "1000"
+      directoryPerms: "0755"
+  mountOptions:
+    - iam
