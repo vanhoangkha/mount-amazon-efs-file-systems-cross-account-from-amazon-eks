@@ -52,50 +52,66 @@ generate_eks_yaml() {
     
     info "Generating YAML for $account_name with ${#private_subnet_array[@]} private and ${#public_subnet_array[@]} public subnets"
     
-    # Create the YAML file using a here-document with proper escaping
-    cat > /tmp/$account_name-cluster.yaml << 'YAML_END'
+    # Create the YAML file directly without placeholders
+    cat > /tmp/$account_name-cluster.yaml << EOF
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
 
 metadata:
-  name: ACCOUNT_NAME-cluster
-  region: AWS_REGION_VALUE
-  version: "EKS_VERSION_VALUE"
+  name: $account_name-cluster
+  region: $AWS_REGION
+  version: "$EKS_VERSION"
 
 vpc:
-  id: VPC_ID_VALUE
+  id: $vpc_id
   clusterEndpoints:
     privateAccess: true
     publicAccess: true
   subnets:
     private:
-PRIVATE_SUBNETS_PLACEHOLDER
-    public:
-PUBLIC_SUBNETS_PLACEHOLDER
+EOF
+
+    # Add private subnets directly
+    for subnet in "${private_subnet_array[@]}"; do
+        if [[ -n "$subnet" ]]; then
+            echo "      $subnet: {}" >> /tmp/$account_name-cluster.yaml
+        fi
+    done
+
+    echo "    public:" >> /tmp/$account_name-cluster.yaml
+    # Add public subnets directly
+    for subnet in "${public_subnet_array[@]}"; do
+        if [[ -n "$subnet" ]]; then
+            echo "      $subnet: {}" >> /tmp/$account_name-cluster.yaml
+        fi
+    done
+
+    # Continue with the rest of the YAML
+    cat >> /tmp/$account_name-cluster.yaml << EOF
 
 iam:
   withOIDC: true
 
 nodeGroups:
-  - name: ACCOUNT_NAME-nodes
-    instanceType: NODE_TYPE_VALUE
-    minSize: MIN_NODES_VALUE
-    maxSize: MAX_NODES_VALUE
-    desiredCapacity: DESIRED_NODES_VALUE
+  - name: $account_name-nodes
+    instanceType: $node_type
+    minSize: $min_nodes
+    maxSize: $max_nodes
+    desiredCapacity: $desired_nodes
     volumeSize: 50
     volumeType: gp3
     
     privateNetworking: true
     
     labels:
-      role: ACCOUNT_NAME
+      role: $account_name
       environment: test
     
     tags:
       Environment: test
-      Service: ACCOUNT_NAME
+      Service: $account_name
       Purpose: efs-testing
-      VPC-CIDR: VPC_CIDR_VALUE
+      VPC-CIDR: $vpc_cidr
     
     iam:
       attachPolicyARNs:
@@ -119,54 +135,7 @@ addons:
 cloudWatch:
   clusterLogging:
     enableTypes: ["api", "audit", "authenticator", "controllerManager", "scheduler"]
-YAML_END
-
-    # Build private subnets section
-    local private_subnets_yaml=""
-    for subnet in "${private_subnet_array[@]}"; do
-        if [[ -n "$subnet" ]]; then
-            private_subnets_yaml="${private_subnets_yaml}      ${subnet}: {}\n"
-        fi
-    done
-    
-    # Build public subnets section
-    local public_subnets_yaml=""
-    for subnet in "${public_subnet_array[@]}"; do
-        if [[ -n "$subnet" ]]; then
-            public_subnets_yaml="${public_subnets_yaml}      ${subnet}: {}\n"
-        fi
-    done
-    
-    # Replace placeholders
-    sed -i.bak \
-        -e "s/ACCOUNT_NAME/$account_name/g" \
-        -e "s/AWS_REGION_VALUE/$AWS_REGION/g" \
-        -e "s/EKS_VERSION_VALUE/$EKS_VERSION/g" \
-        -e "s/VPC_ID_VALUE/$vpc_id/g" \
-        -e "s/NODE_TYPE_VALUE/$node_type/g" \
-        -e "s/MIN_NODES_VALUE/$min_nodes/g" \
-        -e "s/MAX_NODES_VALUE/$max_nodes/g" \
-        -e "s/DESIRED_NODES_VALUE/$desired_nodes/g" \
-        -e "s/VPC_CIDR_VALUE/$vpc_cidr/g" \
-        /tmp/$account_name-cluster.yaml
-    
-    # Replace subnet placeholders (need to handle newlines properly)
-    if [[ -n "$private_subnets_yaml" ]]; then
-        sed -i.bak2 "s/PRIVATE_SUBNETS_PLACEHOLDER/$(echo -e "$private_subnets_yaml" | sed 's/$/\\/')/" /tmp/$account_name-cluster.yaml
-        sed -i.bak3 's/\\$//' /tmp/$account_name-cluster.yaml  # Remove trailing backslashes
-    else
-        sed -i.bak2 "s/PRIVATE_SUBNETS_PLACEHOLDER//" /tmp/$account_name-cluster.yaml
-    fi
-    
-    if [[ -n "$public_subnets_yaml" ]]; then
-        sed -i.bak4 "s/PUBLIC_SUBNETS_PLACEHOLDER/$(echo -e "$public_subnets_yaml" | sed 's/$/\\/')/" /tmp/$account_name-cluster.yaml
-        sed -i.bak5 's/\\$//' /tmp/$account_name-cluster.yaml  # Remove trailing backslashes
-    else
-        sed -i.bak4 "s/PUBLIC_SUBNETS_PLACEHOLDER//" /tmp/$account_name-cluster.yaml
-    fi
-    
-    # Clean up backup files
-    rm -f /tmp/$account_name-cluster.yaml.bak*
+EOF
     
     info "Generated YAML configuration:"
     cat /tmp/$account_name-cluster.yaml
