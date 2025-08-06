@@ -197,6 +197,21 @@ deploy_corebank_efs() {
             }
         },
         {
+            "Sid": "AllowSatelliteAccountIAMAccess",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::$SATELLITE_ACCOUNT:root"
+                ]
+            },
+            "Action": [
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientRootAccess"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:file-system/$EFS_COREBANK_ID"
+        },
+        {
             "Sid": "AllowCoreAccountFullAccess",
             "Effect": "Allow",
             "Principal": {
