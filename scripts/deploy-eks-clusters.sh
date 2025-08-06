@@ -102,10 +102,7 @@ nodeGroups:
     volumeSize: 50
     volumeType: gp3
     
-    subnets:
-      - $AWS_REGION-a
-      - $AWS_REGION-b
-      - $AWS_REGION-c
+    privateNetworking: true
     
     labels:
       role: $account_name
