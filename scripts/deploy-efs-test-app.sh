@@ -7,10 +7,10 @@ PROJECT_ROOT="."
 source ./scripts/config.sh
 
 # Source infrastructure environment files if they exist
-if [ -f "${PROJECT_ROOT}/efs-infrastructure.env" ]; then
-    source "${PROJECT_ROOT}/efs-infrastructure.env"
-elif [ -f "${PROJECT_ROOT}/corebank-efs.env" ]; then
-    source "${PROJECT_ROOT}/corebank-efs.env"
+if [ -f "./efs-infrastructure.env" ]; then
+    source "./efs-infrastructure.env"
+elif [ -f "./corebank-efs.env" ]; then
+    source "./corebank-efs.env"
 fi
 
 # Colors for output
@@ -127,7 +127,7 @@ deploy_application() {
     fi
     
     # Save endpoint information
-    echo "${account_name^^}_ENDPOINT=http://$endpoint" >> "${PROJECT_ROOT}/app-endpoints.env"
+    echo "${account_name^^}_ENDPOINT=http://$endpoint" >> "./app-endpoints.env"
     
     # Show pod status
     info "Pod status:"
@@ -195,16 +195,16 @@ main() {
     # Note: SATELLITE_ACCESS_POINT no longer needed with dynamic provisioning
     
     # Initialize app endpoints file
-    > "${PROJECT_ROOT}/app-endpoints.env"
+    > "./app-endpoints.env"
     
     # Deploy CoreBank application
-    deploy_application "$COREBANK_ACCOUNT" "corebank" "${PROJECT_ROOT}/kubernetes/corebank-app.yaml"
+    deploy_application "$COREBANK_ACCOUNT" "corebank" "./kubernetes/corebank-app.yaml"
     
     # Deploy Satellite application
-    deploy_application "$SATELLITE_ACCOUNT" "satellite" "${PROJECT_ROOT}/kubernetes/satellite-app.yaml"
+    deploy_application "$SATELLITE_ACCOUNT" "satellite" "./kubernetes/satellite-app.yaml"
     
     # Source the endpoints
-    source "${PROJECT_ROOT}/app-endpoints.env"
+    source "./app-endpoints.env"
     
     # Test application health
     log "Testing application health..."
@@ -214,7 +214,7 @@ main() {
     log "🎉 EFS Test Applications deployed successfully!"
     log ""
     log "Application endpoints:"
-    cat "${PROJECT_ROOT}/app-endpoints.env"
+    cat "./app-endpoints.env"
     log ""
     log "Testing commands:"
     if [ -n "$COREBANK_ENDPOINT" ] && [ "$COREBANK_ENDPOINT" != "http://pending" ]; then
