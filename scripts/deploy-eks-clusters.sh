@@ -64,9 +64,16 @@ deploy_eks_cluster() {
     local private_subnets_var="${account_name^^}_PRIVATE_SUBNETS"
     local public_subnets_var="${account_name^^}_PUBLIC_SUBNETS"
     
+    info "Looking for variables: $vpc_id_var, $private_subnets_var, $public_subnets_var"
+    
     local vpc_id="${!vpc_id_var}"
     local private_subnets="${!private_subnets_var}"
     local public_subnets="${!public_subnets_var}"
+    
+    info "Initial values from deployment environment:"
+    info "  vpc_id: '$vpc_id'"
+    info "  private_subnets: '$private_subnets'"
+    info "  public_subnets: '$public_subnets'"
     
     # If deployment environment variables are empty, try to get them from AWS directly
     if [[ -z "$vpc_id" ]]; then
@@ -155,6 +162,16 @@ deploy_eks_cluster() {
     IFS=',' read -ra private_subnet_array <<< "$private_subnets"
     IFS=',' read -ra public_subnet_array <<< "$public_subnets"
     
+    # Remove any empty elements and trim whitespace
+    private_subnet_array=($(printf '%s\n' "${private_subnet_array[@]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$'))
+    public_subnet_array=($(printf '%s\n' "${public_subnet_array[@]}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | grep -v '^$'))
+    
+    # Debug output
+    info "Raw private_subnets: '$private_subnets'"
+    info "Raw public_subnets: '$public_subnets'"
+    info "Private subnet array: ${private_subnet_array[@]}"
+    info "Public subnet array: ${public_subnet_array[@]}"
+    
     # Validate we have enough subnets
     if [[ ${#private_subnet_array[@]} -lt 2 ]]; then
         error "Insufficient private subnets for $account_name. Found ${#private_subnet_array[@]}, need at least 2."
@@ -164,12 +181,32 @@ deploy_eks_cluster() {
         error "Insufficient public subnets for $account_name. Found ${#public_subnet_array[@]}, need at least 2."
     fi
     
+    # Validate that subnets actually exist and belong to the VPC
+    info "Validating subnets exist and belong to VPC: $vpc_id"
+    for subnet in "${private_subnet_array[@]}"; do
+        local subnet_vpc=$(aws ec2 describe-subnets --subnet-ids "$subnet" --query 'Subnets[0].VpcId' --output text --region $AWS_REGION 2>/dev/null || echo "")
+        if [[ "$subnet_vpc" != "$vpc_id" ]]; then
+            error "Private subnet $subnet does not belong to VPC $vpc_id (belongs to: $subnet_vpc)"
+        fi
+        info "✓ Private subnet $subnet validated"
+    done
+    
+    for subnet in "${public_subnet_array[@]}"; do
+        local subnet_vpc=$(aws ec2 describe-subnets --subnet-ids "$subnet" --query 'Subnets[0].VpcId' --output text --region $AWS_REGION 2>/dev/null || echo "")
+        if [[ "$subnet_vpc" != "$vpc_id" ]]; then
+            error "Public subnet $subnet does not belong to VPC $vpc_id (belongs to: $subnet_vpc)"
+        fi
+        info "✓ Public subnet $subnet validated"
+    done
+    
     info "Using existing VPC: $vpc_id"
     info "Private subnets (${#private_subnet_array[@]}): $private_subnets"
     info "Public subnets (${#public_subnet_array[@]}): $public_subnets"
     
     # Create cluster configuration using existing VPC
     info "Creating EKS cluster configuration for $account_name with existing VPC: $vpc_id"
+    
+    # Generate the YAML in a more structured way
     cat > /tmp/$account_name-cluster.yaml << EOF
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
@@ -185,23 +222,25 @@ vpc:
     privateAccess: true
     publicAccess: true
   subnets:
+    private:
 EOF
 
-    # Add private subnets dynamically
-    if [[ ${#private_subnet_array[@]} -gt 0 ]]; then
-        echo "    private:" >> /tmp/$account_name-cluster.yaml
-        for subnet in "${private_subnet_array[@]}"; do
-            echo "      $subnet: { }" >> /tmp/$account_name-cluster.yaml
-        done
-    fi
+    # Add private subnets with proper formatting
+    for subnet in "${private_subnet_array[@]}"; do
+        if [[ -n "$subnet" ]]; then
+            info "Adding private subnet: $subnet"
+            echo "      ${subnet}: {}" >> /tmp/$account_name-cluster.yaml
+        fi
+    done
 
-    # Add public subnets dynamically  
-    if [[ ${#public_subnet_array[@]} -gt 0 ]]; then
-        echo "    public:" >> /tmp/$account_name-cluster.yaml
-        for subnet in "${public_subnet_array[@]}"; do
-            echo "      $subnet: { }" >> /tmp/$account_name-cluster.yaml
-        done
-    fi
+    echo "    public:" >> /tmp/$account_name-cluster.yaml
+    # Add public subnets with proper formatting
+    for subnet in "${public_subnet_array[@]}"; do
+        if [[ -n "$subnet" ]]; then
+            info "Adding public subnet: $subnet"
+            echo "      ${subnet}: {}" >> /tmp/$account_name-cluster.yaml
+        fi
+    done
 
     # Continue with the rest of the YAML
     cat >> /tmp/$account_name-cluster.yaml << EOF
@@ -254,6 +293,29 @@ cloudWatch:
     enableTypes: ["api", "audit", "authenticator", "controllerManager", "scheduler"]
 EOF
     
+    # Validate the generated YAML
+    info "Validating generated YAML configuration..."
+    if command -v yq &> /dev/null; then
+        if ! yq eval . /tmp/$account_name-cluster.yaml > /dev/null 2>&1; then
+            error "Generated YAML is invalid. Please check the configuration."
+        fi
+        info "✓ YAML syntax validation passed"
+    else
+        warn "yq not found, skipping YAML syntax validation"
+    fi
+    
+    # Show the final YAML for debugging
+    info "Final EKS cluster YAML configuration:"
+    cat /tmp/$account_name-cluster.yaml
+    
+    # Validate with eksctl (dry-run style)
+    info "Validating configuration with eksctl..."
+    if ! eksctl utils describe-stacks --config-file=/tmp/$account_name-cluster.yaml &>/dev/null; then
+        warn "eksctl validation warning - this might still work, continuing..."
+    else
+        info "✓ eksctl configuration validation passed"
+    fi
+    
     # Create EKS cluster
     info "Creating EKS cluster $account_name-cluster (this may take 15-20 minutes)"
     eksctl create cluster -f /tmp/$account_name-cluster.yaml
@@ -300,9 +362,18 @@ main() {
     # Source deployment environment to get VPC information
     source_deployment_env
     
-    # Verify VPCs exist
-    if [[ -z "${COREBANK_VPC_ID}" || -z "${SATELLITE_VPC_ID}" ]]; then
-        error "VPC information not found. Please run deploy-vpc.sh first to create VPCs."
+    # Debug: show what we loaded from deployment environment
+    info "Loaded from deployment environment:"
+    info "  COREBANK_VPC_ID: ${COREBANK_VPC_ID:-'NOT SET'}"
+    info "  SATELLITE_VPC_ID: ${SATELLITE_VPC_ID:-'NOT SET'}"
+    info "  COREBANK_PRIVATE_SUBNETS: ${COREBANK_PRIVATE_SUBNETS:-'NOT SET'}"
+    info "  COREBANK_PUBLIC_SUBNETS: ${COREBANK_PUBLIC_SUBNETS:-'NOT SET'}"
+    info "  SATELLITE_PRIVATE_SUBNETS: ${SATELLITE_PRIVATE_SUBNETS:-'NOT SET'}"
+    info "  SATELLITE_PUBLIC_SUBNETS: ${SATELLITE_PUBLIC_SUBNETS:-'NOT SET'}"
+    
+    # Verify VPCs exist (but don't exit if they're missing - let the deploy function handle discovery)
+    if [[ -z "${COREBANK_VPC_ID}" && -z "${SATELLITE_VPC_ID}" ]]; then
+        warn "VPC information not found in deployment environment. Will attempt discovery during deployment."
     fi
     
     # Deploy CoreBank EKS cluster
