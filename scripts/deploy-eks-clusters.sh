@@ -39,7 +39,7 @@ deploy_eks_cluster() {
     local max_nodes=$5
     local desired_nodes=$6
     
-    # Set VPC CIDR based on account
+    # Set VPC CIDR based on account (for display purposes)
     local vpc_cidr
     if [ "$account_name" = "corebank" ]; then
         vpc_cidr="$COREBANK_VPC_CIDR"
@@ -47,7 +47,7 @@ deploy_eks_cluster() {
         vpc_cidr="$SATELLITE_VPC_CIDR"
     fi
     
-    log "Deploying EKS cluster for $account_name account with VPC CIDR: $vpc_cidr"
+    log "Deploying EKS cluster for $account_name account"
     
     # Switch to account
     export AWS_PROFILE="$account_name"
@@ -58,8 +58,30 @@ deploy_eks_cluster() {
         return 0
     fi
     
-    # Create cluster configuration
-    info "Creating EKS cluster configuration for $account_name with VPC CIDR: $vpc_cidr"
+    # Get VPC information from deployment environment
+    source_deployment_env
+    local vpc_id_var="${account_name^^}_VPC_ID"
+    local private_subnets_var="${account_name^^}_PRIVATE_SUBNETS"
+    local public_subnets_var="${account_name^^}_PUBLIC_SUBNETS"
+    
+    local vpc_id="${!vpc_id_var}"
+    local private_subnets="${!private_subnets_var}"
+    local public_subnets="${!public_subnets_var}"
+    
+    if [[ -z "$vpc_id" ]]; then
+        error "VPC ID not found for $account_name. Please run deploy-vpc.sh first."
+    fi
+    
+    # Convert comma-separated subnet lists to arrays
+    IFS=',' read -ra private_subnet_array <<< "$private_subnets"
+    IFS=',' read -ra public_subnet_array <<< "$public_subnets"
+    
+    info "Using existing VPC: $vpc_id"
+    info "Private subnets: $private_subnets"
+    info "Public subnets: $public_subnets"
+    
+    # Create cluster configuration using existing VPC
+    info "Creating EKS cluster configuration for $account_name with existing VPC: $vpc_id"
     cat > /tmp/$account_name-cluster.yaml << EOF
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
@@ -70,25 +92,19 @@ metadata:
   version: "$EKS_VERSION"
 
 vpc:
-  cidr: $vpc_cidr
+  id: $vpc_id
   clusterEndpoints:
     privateAccess: true
     publicAccess: true
   subnets:
     private:
-      $AWS_REGION-a:
-        cidr: ${vpc_cidr%.*}.0/24
-      $AWS_REGION-b:
-        cidr: ${vpc_cidr%.*}.1/24
-      $AWS_REGION-c:
-        cidr: ${vpc_cidr%.*}.2/24
+      ${private_subnet_array[0]}: { }
+      ${private_subnet_array[1]}: { }
+      ${private_subnet_array[2]}: { }
     public:
-      $AWS_REGION-a:
-        cidr: ${vpc_cidr%.*}.100/24
-      $AWS_REGION-b:
-        cidr: ${vpc_cidr%.*}.101/24
-      $AWS_REGION-c:
-        cidr: ${vpc_cidr%.*}.102/24
+      ${public_subnet_array[0]}: { }
+      ${public_subnet_array[1]}: { }
+      ${public_subnet_array[2]}: { }
 
 iam:
   withOIDC: true
@@ -150,22 +166,9 @@ EOF
     info "Verifying cluster nodes"
     kubectl get nodes --context "$account_name-cluster"
     
-    # Display VPC information
-    info "Getting VPC information for $account_name-cluster"
-    VPC_ID=$(aws ec2 describe-vpcs \
-        --filters "Name=tag:eksctl.cluster.k8s.io/v1alpha1/cluster-name,Values=$account_name-cluster" \
-        --query 'Vpcs[0].VpcId' \
-        --output text \
-        --region $AWS_REGION)
-    
-    VPC_CIDR=$(aws ec2 describe-vpcs \
-        --vpc-ids $VPC_ID \
-        --query 'Vpcs[0].CidrBlock' \
-        --output text \
-        --region $AWS_REGION)
-    
-    info "Cluster $account_name-cluster VPC ID: $VPC_ID"
-    info "Cluster $account_name-cluster VPC CIDR: $VPC_CIDR"
+    # Display VPC information (already known from deployment environment)
+    info "Cluster $account_name-cluster using VPC ID: $vpc_id"
+    info "Cluster $account_name-cluster VPC CIDR: $vpc_cidr"
     
     # Create service account for EFS CSI driver
     info "Creating service account for EFS CSI driver"
@@ -194,6 +197,14 @@ main() {
         error "eksctl is required but not installed"
     fi
     
+    # Source deployment environment to get VPC information
+    source_deployment_env
+    
+    # Verify VPCs exist
+    if [[ -z "${COREBANK_VPC_ID}" || -z "${SATELLITE_VPC_ID}" ]]; then
+        error "VPC information not found. Please run deploy-vpc.sh first to create VPCs."
+    fi
+    
     # Deploy CoreBank EKS cluster
     deploy_eks_cluster "$COREBANK_ACCOUNT" "corebank" "$COREBANK_NODE_TYPE" 2 6 3
     
@@ -203,8 +214,8 @@ main() {
     log "🎉 EKS Clusters deployment completed successfully!"
     log ""
     log "Clusters created:"
-    log "  CoreBank: corebank-cluster (VPC CIDR: $COREBANK_VPC_CIDR)"
-    log "  Satellite: satellite-cluster (VPC CIDR: $SATELLITE_VPC_CIDR)"
+    log "  CoreBank: corebank-cluster (VPC: ${COREBANK_VPC_ID})"
+    log "  Satellite: satellite-cluster (VPC: ${SATELLITE_VPC_ID})"
     log ""
     log "Next steps:"
     log "1. Deploy EFS infrastructure: ./scripts/deploy-efs-infrastructure.sh"

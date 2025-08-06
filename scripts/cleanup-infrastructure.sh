@@ -183,6 +183,28 @@ cleanup_iam() {
     log "✓ IAM roles cleaned up for $account_name"
 }
 
+# Cleanup VPC infrastructure
+cleanup_vpc() {
+    local account_name=$1
+    
+    log "Cleaning up VPC infrastructure for $account_name account..."
+    
+    export AWS_PROFILE="$account_name"
+    
+    # Delete VPC CloudFormation stack
+    if aws cloudformation describe-stacks --stack-name "$account_name-vpc" --region $AWS_REGION &>/dev/null; then
+        info "Deleting VPC CloudFormation stack: $account_name-vpc"
+        aws cloudformation delete-stack --stack-name "$account_name-vpc" --region $AWS_REGION || true
+        
+        info "Waiting for VPC stack deletion to complete..."
+        aws cloudformation wait stack-delete-complete --stack-name "$account_name-vpc" --region $AWS_REGION || true
+    else
+        warn "VPC CloudFormation stack $account_name-vpc does not exist, skipping"
+    fi
+    
+    log "✓ VPC infrastructure cleaned up for $account_name"
+}
+
 # Main cleanup function
 main() {
     log "Starting Cross-Account EFS Infrastructure Cleanup"
@@ -205,26 +227,28 @@ main() {
         cleanup_efs "$account"
         cleanup_ecr "$account"
         cleanup_iam "$account"
+        cleanup_vpc "$account"
     done
     
     # Remove local files
     info "Cleaning up local files..."
     rm -f "${DEPLOYMENT_ENV_FILE}"
     rm -f /tmp/*-cluster.yaml
+    rm -f /tmp/*-vpc.yaml
     rm -f /tmp/*-trust-policy.json
     rm -f /tmp/*-efs-policy.json
     
     log "🎉 Infrastructure cleanup completed successfully!"
     log ""
     log "All resources have been deleted:"
-    log "  - EKS clusters and node groups (CoreBank VPC: $COREBANK_VPC_CIDR, Satellite VPC: $SATELLITE_VPC_CIDR)"
+    log "  - VPC infrastructure (CoreBank VPC: $COREBANK_VPC_CIDR, Satellite VPC: $SATELLITE_VPC_CIDR)"
+    log "  - EKS clusters and node groups"
     log "  - CloudFormation stacks"
     log "  - EFS file systems and access points"
     log "  - ECR repositories"
     log "  - IAM roles and policies"
     log "  - Unified deployment environment file"
     log ""
-    log "Note: VPCs created by eksctl are automatically cleaned up with the clusters"
 }
 
 # Run main function

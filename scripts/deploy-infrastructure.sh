@@ -72,6 +72,7 @@ main() {
     check_prerequisites
     
     # Deploy infrastructure components
+    "${PROJECT_ROOT}/scripts/deploy-vpc.sh"
     "${PROJECT_ROOT}/scripts/deploy-eks-clusters.sh"
     "${PROJECT_ROOT}/scripts/deploy-efs-infrastructure.sh"
     "${PROJECT_ROOT}/scripts/build-and-push-image.sh"
@@ -85,6 +86,13 @@ main() {
     fi
     
     log "🎉 Cross-Account EFS Infrastructure Deployment Completed Successfully!"
+    log ""
+    log "Infrastructure deployed:"
+    log "1. ✓ VPC infrastructure (CoreBank & Satellite accounts)"
+    log "2. ✓ EKS clusters with node groups"
+    log "3. ✓ EFS file systems with cross-account access"
+    log "4. ✓ Container images built and pushed"
+    log "5. ✓ Applications deployed and configured"
     log ""
     log "Next Steps:"
     log "1. Check deployment status: ./scripts/status.sh"
