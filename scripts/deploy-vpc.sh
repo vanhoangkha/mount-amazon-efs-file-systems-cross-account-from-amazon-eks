@@ -114,7 +114,7 @@ Resources:
       AvailabilityZone: !Sub '\${AWS::Region}a'
       CidrBlock: !Sub 
         - '\${NetworkPrefix}.100.0/24'
-        - NetworkPrefix: !Select [0, !Split ['.', !Select [0, !Split ['/', !Ref VpcCidr]]]]
+        - NetworkPrefix: !Select [0, !Split ['.0.0/', !Ref VpcCidr]]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -131,7 +131,7 @@ Resources:
       AvailabilityZone: !Sub '\${AWS::Region}b'
       CidrBlock: !Sub 
         - '\${NetworkPrefix}.101.0/24'
-        - NetworkPrefix: !Select [0, !Split ['.', !Select [0, !Split ['/', !Ref VpcCidr]]]]
+        - NetworkPrefix: !Select [0, !Split ['.0.0/', !Ref VpcCidr]]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -148,7 +148,7 @@ Resources:
       AvailabilityZone: !Sub '\${AWS::Region}c'
       CidrBlock: !Sub 
         - '\${NetworkPrefix}.102.0/24'
-        - NetworkPrefix: !Select [0, !Split ['.', !Select [0, !Split ['/', !Ref VpcCidr]]]]
+        - NetworkPrefix: !Select [0, !Split ['.0.0/', !Ref VpcCidr]]
       MapPublicIpOnLaunch: true
       Tags:
         - Key: Name
@@ -166,7 +166,7 @@ Resources:
       AvailabilityZone: !Sub '\${AWS::Region}a'
       CidrBlock: !Sub 
         - '\${NetworkPrefix}.0.0/24'
-        - NetworkPrefix: !Select [0, !Split ['.', !Select [0, !Split ['/', !Ref VpcCidr]]]]
+        - NetworkPrefix: !Select [0, !Split ['.0.0/', !Ref VpcCidr]]
       Tags:
         - Key: Name
           Value: !Sub '\${AccountName}-private-subnet-\${AWS::Region}a'
@@ -182,7 +182,7 @@ Resources:
       AvailabilityZone: !Sub '\${AWS::Region}b'
       CidrBlock: !Sub 
         - '\${NetworkPrefix}.1.0/24'
-        - NetworkPrefix: !Select [0, !Split ['.', !Select [0, !Split ['/', !Ref VpcCidr]]]]
+        - NetworkPrefix: !Select [0, !Split ['.0.0/', !Ref VpcCidr]]
       Tags:
         - Key: Name
           Value: !Sub '\${AccountName}-private-subnet-\${AWS::Region}b'
@@ -198,7 +198,7 @@ Resources:
       AvailabilityZone: !Sub '\${AWS::Region}c'
       CidrBlock: !Sub 
         - '\${NetworkPrefix}.2.0/24'
-        - NetworkPrefix: !Select [0, !Split ['.', !Select [0, !Split ['/', !Ref VpcCidr]]]]
+        - NetworkPrefix: !Select [0, !Split ['.0.0/', !Ref VpcCidr]]
       Tags:
         - Key: Name
           Value: !Sub '\${AccountName}-private-subnet-\${AWS::Region}c'
