@@ -6,6 +6,9 @@ set -e
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
+# Source deployment environment
+source_deployment_env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -76,11 +79,11 @@ cleanup_eks_cluster() {
     # Force delete system pods that can't be evicted
     info "Force deleting system pods..."
     kubectl delete pods --all -n kube-system --force --grace-period=0 || true
-    kubectl delete pods --all -n efs-test --force --grace-period=0 || true
+    kubectl delete pods --all -n default --force --grace-period=0 || true
     
     # Delete applications first
     info "Deleting applications..."
-    kubectl delete namespace efs-test --force --grace-period=0 || true
+    kubectl delete all --all -n default || true
     
     # Delete cluster with force flag
     info "Deleting EKS cluster $account_name-cluster"
@@ -183,6 +186,8 @@ cleanup_iam() {
 # Main cleanup function
 main() {
     log "Starting Cross-Account EFS Infrastructure Cleanup"
+    log "CoreBank Account: $COREBANK_ACCOUNT (VPC CIDR: $COREBANK_VPC_CIDR)"
+    log "Satellite Account: $SATELLITE_ACCOUNT (VPC CIDR: $SATELLITE_VPC_CIDR)"
     
     # Confirmation prompt
     read -p "This will delete ALL resources created by this solution. Are you sure? (yes/no): " confirm
@@ -204,7 +209,7 @@ main() {
     
     # Remove local files
     info "Cleaning up local files..."
-    rm -f "${PROJECT_ROOT}"/*.env
+    rm -f "${DEPLOYMENT_ENV_FILE}"
     rm -f /tmp/*-cluster.yaml
     rm -f /tmp/*-trust-policy.json
     rm -f /tmp/*-efs-policy.json
@@ -212,12 +217,14 @@ main() {
     log "🎉 Infrastructure cleanup completed successfully!"
     log ""
     log "All resources have been deleted:"
-    log "  - EKS clusters and node groups"
+    log "  - EKS clusters and node groups (CoreBank VPC: $COREBANK_VPC_CIDR, Satellite VPC: $SATELLITE_VPC_CIDR)"
     log "  - CloudFormation stacks"
     log "  - EFS file systems and access points"
     log "  - ECR repositories"
     log "  - IAM roles and policies"
-    log "  - Local configuration files"
+    log "  - Unified deployment environment file"
+    log ""
+    log "Note: VPCs created by eksctl are automatically cleaned up with the clusters"
 }
 
 # Run main function

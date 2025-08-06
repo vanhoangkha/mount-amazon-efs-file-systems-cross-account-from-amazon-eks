@@ -39,7 +39,15 @@ deploy_eks_cluster() {
     local max_nodes=$5
     local desired_nodes=$6
     
-    log "Deploying EKS cluster for $account_name account..."
+    # Set VPC CIDR based on account
+    local vpc_cidr
+    if [ "$account_name" = "corebank" ]; then
+        vpc_cidr="$COREBANK_VPC_CIDR"
+    else
+        vpc_cidr="$SATELLITE_VPC_CIDR"
+    fi
+    
+    log "Deploying EKS cluster for $account_name account with VPC CIDR: $vpc_cidr"
     
     # Switch to account
     export AWS_PROFILE="$account_name"
@@ -51,7 +59,7 @@ deploy_eks_cluster() {
     fi
     
     # Create cluster configuration
-    info "Creating EKS cluster configuration for $account_name"
+    info "Creating EKS cluster configuration for $account_name with VPC CIDR: $vpc_cidr"
     cat > /tmp/$account_name-cluster.yaml << EOF
 apiVersion: eksctl.io/v1alpha5
 kind: ClusterConfig
@@ -60,6 +68,27 @@ metadata:
   name: $account_name-cluster
   region: $AWS_REGION
   version: "$EKS_VERSION"
+
+vpc:
+  cidr: $vpc_cidr
+  clusterEndpoints:
+    privateAccess: true
+    publicAccess: true
+  subnets:
+    private:
+      $AWS_REGION-a:
+        cidr: ${vpc_cidr%.*}.0/24
+      $AWS_REGION-b:
+        cidr: ${vpc_cidr%.*}.1/24
+      $AWS_REGION-c:
+        cidr: ${vpc_cidr%.*}.2/24
+    public:
+      $AWS_REGION-a:
+        cidr: ${vpc_cidr%.*}.100/24
+      $AWS_REGION-b:
+        cidr: ${vpc_cidr%.*}.101/24
+      $AWS_REGION-c:
+        cidr: ${vpc_cidr%.*}.102/24
 
 iam:
   withOIDC: true
@@ -73,6 +102,11 @@ nodeGroups:
     volumeSize: 50
     volumeType: gp3
     
+    subnets:
+      - $AWS_REGION-a
+      - $AWS_REGION-b
+      - $AWS_REGION-c
+    
     labels:
       role: $account_name
       environment: test
@@ -81,6 +115,7 @@ nodeGroups:
       Environment: test
       Service: $account_name
       Purpose: efs-testing
+      VPC-CIDR: $vpc_cidr
     
     iam:
       attachPolicyARNs:
@@ -118,6 +153,23 @@ EOF
     info "Verifying cluster nodes"
     kubectl get nodes --context "$account_name-cluster"
     
+    # Display VPC information
+    info "Getting VPC information for $account_name-cluster"
+    VPC_ID=$(aws ec2 describe-vpcs \
+        --filters "Name=tag:eksctl.cluster.k8s.io/v1alpha1/cluster-name,Values=$account_name-cluster" \
+        --query 'Vpcs[0].VpcId' \
+        --output text \
+        --region $AWS_REGION)
+    
+    VPC_CIDR=$(aws ec2 describe-vpcs \
+        --vpc-ids $VPC_ID \
+        --query 'Vpcs[0].CidrBlock' \
+        --output text \
+        --region $AWS_REGION)
+    
+    info "Cluster $account_name-cluster VPC ID: $VPC_ID"
+    info "Cluster $account_name-cluster VPC CIDR: $VPC_CIDR"
+    
     # Create service account for EFS CSI driver
     info "Creating service account for EFS CSI driver"
     eksctl create iamserviceaccount \
@@ -135,6 +187,11 @@ EOF
 main() {
     log "Starting EKS Clusters Deployment"
     
+    # Display VPC configuration
+    info "VPC Configuration:"
+    info "  CoreBank VPC CIDR: $COREBANK_VPC_CIDR"
+    info "  Satellite VPC CIDR: $SATELLITE_VPC_CIDR"
+    
     # Check prerequisites
     if ! command -v eksctl &> /dev/null; then
         error "eksctl is required but not installed"
@@ -149,8 +206,8 @@ main() {
     log "🎉 EKS Clusters deployment completed successfully!"
     log ""
     log "Clusters created:"
-    log "  CoreBank: corebank-cluster"
-    log "  Satellite: satellite-cluster"
+    log "  CoreBank: corebank-cluster (VPC CIDR: $COREBANK_VPC_CIDR)"
+    log "  Satellite: satellite-cluster (VPC CIDR: $SATELLITE_VPC_CIDR)"
     log ""
     log "Next steps:"
     log "1. Deploy EFS infrastructure: ./scripts/deploy-efs-infrastructure.sh"

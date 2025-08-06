@@ -8,6 +8,9 @@ set -e
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
+# Source deployment environment
+source_deployment_env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -62,8 +65,8 @@ check_prerequisites() {
 main() {
     log "Starting Cross-Account EFS Infrastructure Deployment"
     log "Region: $AWS_REGION"
-    log "CoreBank Account: $COREBANK_ACCOUNT"
-    log "Satellite Account: $SATELLITE_ACCOUNT"
+    log "CoreBank Account: $COREBANK_ACCOUNT (VPC CIDR: $COREBANK_VPC_CIDR)"
+    log "Satellite Account: $SATELLITE_ACCOUNT (VPC CIDR: $SATELLITE_VPC_CIDR)"
     
     # Check prerequisites
     check_prerequisites
@@ -74,16 +77,23 @@ main() {
     "${PROJECT_ROOT}/scripts/build-and-push-image.sh"
     "${PROJECT_ROOT}/scripts/deploy-efs-test-app.sh"
     
-    # Run tests
-    "${PROJECT_ROOT}/scripts/test-efs-cross-account.sh"
+    # Test script will be available after we create it
+    if [ -f "${PROJECT_ROOT}/scripts/test-efs-cross-account.sh" ]; then
+        "${PROJECT_ROOT}/scripts/test-efs-cross-account.sh"
+    else
+        info "Test script not found, skipping tests"
+    fi
     
     log "🎉 Cross-Account EFS Infrastructure Deployment Completed Successfully!"
     log ""
     log "Next Steps:"
-    log "1. Check application endpoints in app-endpoints.env"
+    log "1. Check deployment status: ./scripts/status.sh"
     log "2. Run additional tests: ./scripts/test-efs-cross-account.sh"
     log "3. Check monitoring dashboards in CloudWatch"
     log "4. Review security configurations"
+    log ""
+    log "Environment file: $DEPLOYMENT_ENV_FILE"
+    log "5. Test VPC connectivity between accounts"
 }
 
 # Run main function

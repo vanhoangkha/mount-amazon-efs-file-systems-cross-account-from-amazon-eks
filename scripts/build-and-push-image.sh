@@ -6,6 +6,9 @@ set -e
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
+# Source deployment environment
+source_deployment_env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -118,6 +121,8 @@ EOF
 # Main function
 main() {
     log "Starting Docker image build and push process"
+    log "CoreBank Account: $COREBANK_ACCOUNT (VPC CIDR: $COREBANK_VPC_CIDR)"
+    log "Satellite Account: $SATELLITE_ACCOUNT (VPC CIDR: $SATELLITE_VPC_CIDR)"
     
     # Check prerequisites
     if ! command -v docker &> /dev/null; then
@@ -137,11 +142,9 @@ main() {
     build_and_push_image "$SATELLITE_ACCOUNT" "satellite"
     set_ecr_lifecycle_policy "satellite"
     
-    # Save image information
-    cat > "${PROJECT_ROOT}/docker-images.env" << EOF
-COREBANK_IMAGE=$COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest
-SATELLITE_IMAGE=$SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest
-EOF
+    # Save image information to unified environment file
+    update_deployment_env "COREBANK_IMAGE" "$COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
+    update_deployment_env "SATELLITE_IMAGE" "$SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     
     log "🎉 Docker images built and pushed successfully!"
     log ""
