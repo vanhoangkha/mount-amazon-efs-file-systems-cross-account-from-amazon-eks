@@ -6,12 +6,8 @@ set -e
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
-# Source infrastructure environment files if they exist
-if [ -f "./efs-infrastructure.env" ]; then
-    source "./efs-infrastructure.env"
-elif [ -f "./corebank-efs.env" ]; then
-    source "./corebank-efs.env"
-fi
+# Source deployment environment
+source_deployment_env
 
 # Colors for output
 RED='\033[0;31m'
@@ -126,8 +122,8 @@ deploy_application() {
         info "Service endpoint: http://$endpoint"
     fi
     
-    # Save endpoint information
-    echo "${account_name^^}_ENDPOINT=http://$endpoint" >> "./app-endpoints.env"
+    # Save endpoint information to unified environment file
+    update_deployment_env "${account_name^^}_ENDPOINT" "http://$endpoint"
     
     # Show pod status
     info "Pod status:"
@@ -177,6 +173,8 @@ test_application_health() {
 # Main function
 main() {
     log "Starting EFS Test Application Deployment"
+    log "CoreBank Account: $COREBANK_ACCOUNT (VPC CIDR: $COREBANK_VPC_CIDR)"
+    log "Satellite Account: $SATELLITE_ACCOUNT (VPC CIDR: $SATELLITE_VPC_CIDR)"
     
     # Check prerequisites
     if ! command -v kubectl &> /dev/null; then
@@ -194,17 +192,14 @@ main() {
     
     # Note: SATELLITE_ACCESS_POINT no longer needed with dynamic provisioning
     
-    # Initialize app endpoints file
-    > "./app-endpoints.env"
-    
     # Deploy CoreBank application
     deploy_application "$COREBANK_ACCOUNT" "corebank" "./kubernetes/corebank-app.yaml"
     
     # Deploy Satellite application
     deploy_application "$SATELLITE_ACCOUNT" "satellite" "./kubernetes/satellite-app.yaml"
     
-    # Source the endpoints
-    source "./app-endpoints.env"
+    # Refresh environment to get updated endpoints
+    source_deployment_env
     
     # Test application health
     log "Testing application health..."
@@ -214,7 +209,14 @@ main() {
     log "🎉 EFS Test Applications deployed successfully!"
     log ""
     log "Application endpoints:"
-    cat "./app-endpoints.env"
+    if [ -n "$COREBANK_ENDPOINT" ] && [ "$COREBANK_ENDPOINT" != "http://pending" ]; then
+        log "  CoreBank: $COREBANK_ENDPOINT"
+    fi
+    if [ -n "$SATELLITE_ENDPOINT" ] && [ "$SATELLITE_ENDPOINT" != "http://pending" ]; then
+        log "  Satellite: $SATELLITE_ENDPOINT"
+    fi
+    log ""
+    log "Environment file: $DEPLOYMENT_ENV_FILE"
     log ""
     log "Testing commands:"
     if [ -n "$COREBANK_ENDPOINT" ] && [ "$COREBANK_ENDPOINT" != "http://pending" ]; then

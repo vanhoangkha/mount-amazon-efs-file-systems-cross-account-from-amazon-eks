@@ -6,6 +6,9 @@ set -e
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
+# Source deployment environment
+source_deployment_env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -64,12 +67,23 @@ deploy_corebank_efs() {
         sleep 10
     done
     
-    # Get VPC and subnet information
+    # Get VPC and subnet information for the CoreBank EKS cluster
+    info "Looking for CoreBank EKS cluster VPC..."
     VPC_ID=$(aws ec2 describe-vpcs \
-        --filters "Name=tag:Name,Values=*corebank*" "Name=state,Values=available" \
+        --filters "Name=tag:eksctl.cluster.k8s.io/v1alpha1/cluster-name,Values=corebank-cluster" "Name=state,Values=available" \
         --query 'Vpcs[0].VpcId' \
         --output text \
         --region $AWS_REGION)
+    
+    if [ "$VPC_ID" = "None" ] || [ -z "$VPC_ID" ]; then
+        # Fallback to looking for VPC with CoreBank tag
+        info "EKS cluster VPC not found, looking for tagged CoreBank VPC..."
+        VPC_ID=$(aws ec2 describe-vpcs \
+            --filters "Name=tag:Name,Values=*corebank*" "Name=state,Values=available" \
+            --query 'Vpcs[0].VpcId' \
+            --output text \
+            --region $AWS_REGION)
+    fi
     
     if [ "$VPC_ID" = "None" ] || [ -z "$VPC_ID" ]; then
         warn "CoreBank VPC not found, using default VPC"
@@ -79,6 +93,8 @@ deploy_corebank_efs() {
             --output text \
             --region $AWS_REGION)
     fi
+    
+    info "Using VPC: $VPC_ID"
     
     # Get subnets
     SUBNET_IDS=$(aws ec2 describe-subnets \
@@ -97,13 +113,14 @@ deploy_corebank_efs() {
         --query 'GroupId' \
         --output text)
     
-    # Add NFS rule to security group for VPC CIDR
+    # Add NFS rule to security group for CoreBank VPC CIDR
     VPC_CIDR=$(aws ec2 describe-vpcs \
         --vpc-ids $VPC_ID \
         --query 'Vpcs[0].CidrBlock' \
         --output text \
         --region $AWS_REGION)
-        
+    
+    info "Adding CoreBank VPC CIDR to security group: $VPC_CIDR"
     aws ec2 authorize-security-group-ingress \
         --group-id $EFS_SG_ID \
         --protocol tcp \
@@ -111,26 +128,21 @@ deploy_corebank_efs() {
         --cidr $VPC_CIDR \
         --region $AWS_REGION
     
-    # Add broader private CIDR ranges for cross-account access
+    # Add specific CIDR ranges for cross-account access (CoreBank and Satellite VPCs)
+    info "Adding CoreBank VPC CIDR: $COREBANK_VPC_CIDR"
     aws ec2 authorize-security-group-ingress \
         --group-id $EFS_SG_ID \
         --protocol tcp \
         --port 2049 \
-        --cidr 10.0.0.0/8 \
+        --cidr $COREBANK_VPC_CIDR \
         --region $AWS_REGION || true
-        
+    
+    info "Adding Satellite VPC CIDR: $SATELLITE_VPC_CIDR"    
     aws ec2 authorize-security-group-ingress \
         --group-id $EFS_SG_ID \
         --protocol tcp \
         --port 2049 \
-        --cidr 172.16.0.0/12 \
-        --region $AWS_REGION || true
-        
-    aws ec2 authorize-security-group-ingress \
-        --group-id $EFS_SG_ID \
-        --protocol tcp \
-        --port 2049 \
-        --cidr 192.168.0.0/16 \
+        --cidr $SATELLITE_VPC_CIDR \
         --region $AWS_REGION || true
     
     # Create mount targets
@@ -197,6 +209,21 @@ deploy_corebank_efs() {
             }
         },
         {
+            "Sid": "AllowSatelliteAccountIAMAccess",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": [
+                    "arn:aws:iam::$SATELLITE_ACCOUNT:root"
+                ]
+            },
+            "Action": [
+                "elasticfilesystem:ClientMount",
+                "elasticfilesystem:ClientWrite",
+                "elasticfilesystem:ClientRootAccess"
+            ],
+            "Resource": "arn:aws:elasticfilesystem:$AWS_REGION:$COREBANK_ACCOUNT:file-system/$EFS_COREBANK_ID"
+        },
+        {
             "Sid": "AllowCoreAccountFullAccess",
             "Effect": "Allow",
             "Principal": {
@@ -216,13 +243,11 @@ EOF
         --policy file:///tmp/efs-resource-policy.json \
         --region $AWS_REGION
     
-    # Save outputs
-    cat > "${PROJECT_ROOT}/corebank-efs.env" << EOF
-EFS_COREBANK_ID=$EFS_COREBANK_ID
-SATELLITE_ACCESS_POINT=$SATELLITE_ACCESS_POINT
-EFS_SG_ID=$EFS_SG_ID
-VPC_ID=$VPC_ID
-EOF
+    # Save outputs to unified environment file
+    update_deployment_env "EFS_COREBANK_ID" "$EFS_COREBANK_ID"
+    update_deployment_env "SATELLITE_ACCESS_POINT" "$SATELLITE_ACCESS_POINT"
+    update_deployment_env "EFS_SG_ID" "$EFS_SG_ID"
+    update_deployment_env "VPC_ID" "$VPC_ID"
     
     log "✓ CoreBank EFS deployment completed"
 }
@@ -304,11 +329,8 @@ EOF
     
     info "Cross-account role created: $ROLE_ARN"
     
-    # Save outputs
-    cat > "${PROJECT_ROOT}/$account_name-config.env" << EOF
-CROSS_ACCOUNT_ROLE_ARN=$ROLE_ARN
-ACCOUNT_ID=$account_id
-EOF
+    # Save outputs to unified environment file
+    update_deployment_env "SATELLITE_CROSS_ACCOUNT_ROLE_ARN" "$ROLE_ARN"
     
     log "✓ $account_name cross-account configuration completed"
 }
@@ -323,16 +345,12 @@ main() {
     # Configure Satellite Account
     configure_satellite_account "$SATELLITE_ACCOUNT" "satellite"
     
-    # Combine all environment files
-    cat "${PROJECT_ROOT}/corebank-efs.env" \
-        "${PROJECT_ROOT}/satellite-config.env" \
-        > "${PROJECT_ROOT}/efs-infrastructure.env"
-    
     log "🎉 EFS Infrastructure deployment completed successfully!"
     log ""
     log "Infrastructure created:"
-    log "  CoreBank EFS: $(grep EFS_COREBANK_ID "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
-    log "  Satellite Access Point: $(grep SATELLITE_ACCESS_POINT "${PROJECT_ROOT}/corebank-efs.env" | cut -d'=' -f2)"
+    log "  CoreBank EFS: $EFS_COREBANK_ID"
+    log "  Satellite Access Point: $SATELLITE_ACCESS_POINT"
+    log "  Environment file: $DEPLOYMENT_ENV_FILE"
     log ""
     log "Next steps:"
     log "1. Build and push images: ./scripts/build-and-push-image.sh"

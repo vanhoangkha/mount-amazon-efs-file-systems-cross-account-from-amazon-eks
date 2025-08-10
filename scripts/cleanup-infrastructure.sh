@@ -6,6 +6,9 @@ set -e
 PROJECT_ROOT="."
 source ./scripts/config.sh
 
+# Source deployment environment
+source_deployment_env
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -76,11 +79,11 @@ cleanup_eks_cluster() {
     # Force delete system pods that can't be evicted
     info "Force deleting system pods..."
     kubectl delete pods --all -n kube-system --force --grace-period=0 || true
-    kubectl delete pods --all -n efs-test --force --grace-period=0 || true
+    kubectl delete pods --all -n default --force --grace-period=0 || true
     
     # Delete applications first
     info "Deleting applications..."
-    kubectl delete namespace efs-test --force --grace-period=0 || true
+    kubectl delete all --all -n default || true
     
     # Delete cluster with force flag
     info "Deleting EKS cluster $account_name-cluster"
@@ -180,9 +183,33 @@ cleanup_iam() {
     log "✓ IAM roles cleaned up for $account_name"
 }
 
+# Cleanup VPC infrastructure
+cleanup_vpc() {
+    local account_name=$1
+    
+    log "Cleaning up VPC infrastructure for $account_name account..."
+    
+    export AWS_PROFILE="$account_name"
+    
+    # Delete VPC CloudFormation stack
+    if aws cloudformation describe-stacks --stack-name "$account_name-vpc" --region $AWS_REGION &>/dev/null; then
+        info "Deleting VPC CloudFormation stack: $account_name-vpc"
+        aws cloudformation delete-stack --stack-name "$account_name-vpc" --region $AWS_REGION || true
+        
+        info "Waiting for VPC stack deletion to complete..."
+        aws cloudformation wait stack-delete-complete --stack-name "$account_name-vpc" --region $AWS_REGION || true
+    else
+        warn "VPC CloudFormation stack $account_name-vpc does not exist, skipping"
+    fi
+    
+    log "✓ VPC infrastructure cleaned up for $account_name"
+}
+
 # Main cleanup function
 main() {
     log "Starting Cross-Account EFS Infrastructure Cleanup"
+    log "CoreBank Account: $COREBANK_ACCOUNT (VPC CIDR: $COREBANK_VPC_CIDR)"
+    log "Satellite Account: $SATELLITE_ACCOUNT (VPC CIDR: $SATELLITE_VPC_CIDR)"
     
     # Confirmation prompt
     read -p "This will delete ALL resources created by this solution. Are you sure? (yes/no): " confirm
@@ -200,24 +227,28 @@ main() {
         cleanup_efs "$account"
         cleanup_ecr "$account"
         cleanup_iam "$account"
+        cleanup_vpc "$account"
     done
     
     # Remove local files
     info "Cleaning up local files..."
-    rm -f "${PROJECT_ROOT}"/*.env
+    rm -f "${DEPLOYMENT_ENV_FILE}"
     rm -f /tmp/*-cluster.yaml
+    rm -f /tmp/*-vpc.yaml
     rm -f /tmp/*-trust-policy.json
     rm -f /tmp/*-efs-policy.json
     
     log "🎉 Infrastructure cleanup completed successfully!"
     log ""
     log "All resources have been deleted:"
+    log "  - VPC infrastructure (CoreBank VPC: $COREBANK_VPC_CIDR, Satellite VPC: $SATELLITE_VPC_CIDR)"
     log "  - EKS clusters and node groups"
     log "  - CloudFormation stacks"
     log "  - EFS file systems and access points"
     log "  - ECR repositories"
     log "  - IAM roles and policies"
-    log "  - Local configuration files"
+    log "  - Unified deployment environment file"
+    log ""
 }
 
 # Run main function
