@@ -6,7 +6,7 @@
 
 A comprehensive solution for mounting Amazon EFS file systems across AWS accounts from Amazon EKS clusters, specifically designed for banking and financial services with high availability and performance requirements.
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
 This solution implements a **shared storage pattern** where satellite applications directly read and write to a shared CoreBank EFS across AWS accounts, eliminating the need for local storage and ensuring real-time data consistency.
 
@@ -29,15 +29,15 @@ This solution implements a **shared storage pattern** where satellite applicatio
 
 ### Key Features
 
-- **🔗 Shared Storage Pattern**: Satellite apps directly access CoreBank EFS
-- **🧪 EFS Testing**: Comprehensive testing of cross-account EFS functionality
-- **🔒 Cross-Account Security**: IAM roles and EFS access points with proper authentication
-- **📈 High Performance**: Provisioned throughput and optimized mount options
-- **🚀 Simple Deployment**: Automated scripts for complete infrastructure setup
-- **📊 Comprehensive Testing**: Automated test suite with detailed reporting
-- **🌐 Banking-Grade**: Production-ready with compliance and security best practices
+- **Shared Storage Pattern**: Satellite apps directly access CoreBank EFS
+- **EFS Testing**: Comprehensive testing of cross-account EFS functionality
+- **Cross-Account Security**: IAM roles and EFS access points with proper authentication
+- **High Performance**: Provisioned throughput and optimized mount options
+- **Simple Deployment**: Automated scripts for complete infrastructure setup
+- **Comprehensive Testing**: Automated test suite with detailed reporting
+- **Banking-Grade**: Production-ready with compliance and security best practices
 
-## 🎯 Performance Requirements
+## Performance Requirements
 
 | Metric | Target | Use Case |
 |--------|--------|----------|
@@ -48,7 +48,7 @@ This solution implements a **shared storage pattern** where satellite applicatio
 | Recovery Time Objective (RTO) | < 60 seconds | Disaster recovery |
 | Recovery Point Objective (RPO) | < 30 seconds | Data loss tolerance |
 
-## 📋 Prerequisites
+## Prerequisites
 
 ### Required Tools
 
@@ -124,7 +124,7 @@ source .env
 source ./scripts/config.sh
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Option 1: Full Automated Deployment
 
@@ -158,7 +158,7 @@ This will:
 ./scripts/deploy-efs-test-app.sh
 ```
 
-## 🧪 Testing
+## Testing
 
 ### Comprehensive Test Suite
 
@@ -196,7 +196,7 @@ curl "http://$SATELLITE_1_ENDPOINT/read?filename=test/my-file.json"
 curl "http://$SATELLITE_1_ENDPOINT/list"
 ```
 
-## 📊 API Reference
+## API Reference
 
 ### Endpoints
 
@@ -230,7 +230,7 @@ curl "http://$ENDPOINT/read?filename=transactions/tx-123.json"
 curl http://$ENDPOINT/stats
 ```
 
-## 🏗️ Infrastructure
+## Infrastructure
 
 ### Account Structure
 
@@ -260,7 +260,7 @@ Organization Root
 - **Cross-Account Access**: IAM roles with EFS access policies
 - **Mount Options**: Optimized for performance and reliability
 
-## 🔧 Configuration
+## Configuration
 
 ### Key Configuration Files
 
@@ -294,7 +294,7 @@ export API_RESPONSE_TARGET="200"
 export RECOVERY_TIME_TARGET="60"
 ```
 
-## 🔍 Monitoring
+## Monitoring
 
 ### CloudWatch Metrics
 
@@ -334,7 +334,7 @@ kubectl get pods -n efs-test
 kubectl logs -n efs-test deployment/efs-test-app
 ```
 
-## 🚀 Production Considerations
+## Production Considerations
 
 ### Security Best Practices
 
@@ -357,14 +357,14 @@ kubectl logs -n efs-test deployment/efs-test-app
 3. **Cross-Region Replication**: Optional for disaster recovery
 4. **Monitoring**: CloudWatch alarms for health and performance
 
-## 📚 Resources
+## Resources
 
 - [Amazon EFS User Guide](https://docs.aws.amazon.com/efs/latest/ug/)
 - [Amazon EKS User Guide](https://docs.aws.amazon.com/eks/latest/userguide/)
 - [EFS CSI Driver](https://github.com/kubernetes-sigs/aws-efs-csi-driver)
 - [AWS Cross-Account Access Best Practices](https://docs.aws.amazon.com/IAM/latest/UserGuide/tutorial_cross-account-with-roles.html)
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -372,11 +372,11 @@ kubectl logs -n efs-test deployment/efs-test-app
 4. Add tests for new functionality
 5. Submit a pull request
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🆘 Support
+## Support
 
 For issues and questions:
 
