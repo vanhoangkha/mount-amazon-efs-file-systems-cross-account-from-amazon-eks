@@ -2,27 +2,27 @@
 
 This guide will help you deploy and test the EFS cross-account applications I've created for you.
 
-## 📋 What I've Created
+## What I've Created
 
 I've built a complete solution with:
 
-### 🐍 Python Flask Applications (`/applications/efs-test-app/`)
+### Python Flask Applications (`/applications/efs-test-app/`)
 - **Simple REST API** for testing EFS operations
 - **Cross-account EFS access** capabilities
 - **Real-time file sharing** between accounts
 - **Health monitoring** and performance metrics
 
-### ☸️ Kubernetes Manifests (`/kubernetes/`)
+### Kubernetes Manifests (`/kubernetes/`)
 - **CoreBank deployment** - runs in your CoreBank account
 - **Satellite deployment** - runs in your Satellite account with cross-account EFS access
 - **LoadBalancer services** for external access
 
-### 🔧 Deployment Scripts (`/scripts/`)
+### Deployment Scripts (`/scripts/`)
 - **`build-and-push-image.sh`** - Builds Docker images and pushes to ECR
 - **`deploy-efs-test-app.sh`** - Deploys applications to EKS clusters
 - **`test-efs-cross-account.sh`** - Comprehensive testing suite
 
-## 🚀 How to Deploy and Test
+## How to Deploy and Test
 
 ### Step 1: Verify Prerequisites
 Make sure you have the existing infrastructure scripts working:
@@ -57,7 +57,7 @@ docker --version
 ./scripts/test-efs-cross-account.sh
 ```
 
-## 🧪 What the Applications Do
+## What the Applications Do
 
 ### CoreBank Application
 - Runs in your CoreBank EKS cluster
@@ -71,7 +71,7 @@ docker --version
 - Same REST API interface
 - Writes files to `/mnt/efs` (mapped to CoreBank EFS `/satellite` directory)
 
-## 📡 API Endpoints
+## API Endpoints
 
 Both applications expose identical APIs:
 
@@ -101,7 +101,7 @@ curl http://your-app-endpoint/stats
 curl -X POST http://your-app-endpoint/test
 ```
 
-## 🔄 Cross-Account Data Sharing
+## Cross-Account Data Sharing
 
 The key feature is **real-time data sharing**:
 
@@ -110,18 +110,18 @@ The key feature is **real-time data sharing**:
 3. **No data duplication** - single source of truth in CoreBank EFS
 4. **Strong consistency** - no eventual consistency delays
 
-## 📊 Testing Scenarios
+## Testing Scenarios
 
 The test suite validates:
 
-✅ **Health Checks** - Both apps are running and EFS is mounted  
-✅ **Write Operations** - Files can be written to EFS  
-✅ **Read Operations** - Files can be read from EFS  
-✅ **Cross-Account Consistency** - Files written by one app are readable by the other  
-✅ **Performance** - Operations complete within acceptable timeframes  
-✅ **File Listing** - Directory operations work correctly  
+**Health Checks** - Both apps are running and EFS is mounted
+**Write Operations** - Files can be written to EFS
+**Read Operations** - Files can be read from EFS
+**Cross-Account Consistency** - Files written by one app are readable by the other
+**Performance** - Operations complete within acceptable timeframes
+**File Listing** - Directory operations work correctly
 
-## 🔍 Monitoring and Troubleshooting
+## Monitoring and Troubleshooting
 
 ### Check Application Status
 ```bash
@@ -149,7 +149,7 @@ The applications provide detailed logging:
 - Cross-account access status
 - Error details for troubleshooting
 
-## 🏗️ Architecture Benefits
+## Architecture Benefits
 
 ### For Banking/Financial Applications:
 1. **Centralized Data Storage** - All data in CoreBank account for compliance
@@ -164,7 +164,7 @@ The applications provide detailed logging:
 - **Cloud Native** - Uses AWS EFS CSI driver and LoadBalancer services
 - **Observable** - Built-in health checks, metrics, and logging
 
-## 🎯 Use Cases
+## Use Cases
 
 This solution is perfect for:
 
@@ -174,7 +174,7 @@ This solution is perfect for:
 - **Audit Logging** - Centralized audit trails accessible by compliance services
 - **Data Pipeline** - Shared data processing between different service accounts
 
-## 📁 File Structure Created
+## File Structure Created
 
 ```
 /applications/
@@ -195,7 +195,7 @@ This solution is perfect for:
 └── test-efs-cross-account.sh   # Comprehensive test suite
 ```
 
-## 🎉 Next Steps
+## Next Steps
 
 After successful deployment:
 
