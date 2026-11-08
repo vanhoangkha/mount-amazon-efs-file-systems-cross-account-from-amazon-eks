@@ -455,7 +455,7 @@ main() {
     # Deploy Satellite VPC
     deploy_vpc "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_VPC_CIDR"
     
-    log "🎉 VPC Infrastructure deployment completed successfully!"
+    log "VPC Infrastructure deployment completed successfully!"
     log ""
     log "VPCs created:"
     log "  CoreBank: corebank-vpc (VPC CIDR: $COREBANK_VPC_CIDR)"

@@ -146,7 +146,7 @@ main() {
     update_deployment_env "COREBANK_IMAGE" "$COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     update_deployment_env "SATELLITE_IMAGE" "$SATELLITE_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"
     
-    log "🎉 Docker images built and pushed successfully!"
+    log "Docker images built and pushed successfully!"
     log ""
     log "Images created:"
     log "  CoreBank: $COREBANK_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com/efs-test-app:latest"

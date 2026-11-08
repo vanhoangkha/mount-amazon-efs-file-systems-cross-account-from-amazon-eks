@@ -271,7 +271,7 @@ main() {
         warn "Both endpoints not available, skipping cross-account tests"
     fi
     
-    log "🎉 Cross-Account EFS Testing Completed!"
+    log "Cross-Account EFS Testing Completed!"
     log ""
     log "Test Summary:"
     log "  - VPC connectivity: Verified"

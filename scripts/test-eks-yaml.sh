@@ -112,7 +112,7 @@ EOF
             return 1
         fi
     else
-        echo "⚠ yq not found, skipping YAML syntax validation"
+        echo "yq not found, skipping YAML syntax validation"
     fi
     
     # Test eksctl validation (dry-run)
@@ -121,10 +121,10 @@ EOF
         if eksctl utils describe-stacks --config-file=/tmp/test-eks-config.yaml &>/dev/null; then
             echo "✓ eksctl configuration validation passed"
         else
-            echo "⚠ eksctl validation failed or returned warnings"
+            echo "eksctl validation failed or returned warnings"
         fi
     else
-        echo "⚠ eksctl not found, skipping eksctl validation"
+        echo "eksctl not found, skipping eksctl validation"
     fi
     
     echo ""

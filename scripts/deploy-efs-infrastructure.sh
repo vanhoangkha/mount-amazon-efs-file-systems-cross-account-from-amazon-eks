@@ -345,7 +345,7 @@ main() {
     # Configure Satellite Account
     configure_satellite_account "$SATELLITE_ACCOUNT" "satellite"
     
-    log "🎉 EFS Infrastructure deployment completed successfully!"
+    log "EFS Infrastructure deployment completed successfully!"
     log ""
     log "Infrastructure created:"
     log "  CoreBank EFS: $EFS_COREBANK_ID"
