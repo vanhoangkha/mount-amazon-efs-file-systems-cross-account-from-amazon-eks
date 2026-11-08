@@ -206,7 +206,7 @@ main() {
     test_application_health "corebank"
     test_application_health "satellite"
     
-    log "🎉 EFS Test Applications deployed successfully!"
+    log "EFS Test Applications deployed successfully!"
     log ""
     log "Application endpoints:"
     if [ -n "$COREBANK_ENDPOINT" ] && [ "$COREBANK_ENDPOINT" != "http://pending" ]; then

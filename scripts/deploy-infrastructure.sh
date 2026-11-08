@@ -85,7 +85,7 @@ main() {
         info "Test script not found, skipping tests"
     fi
     
-    log "🎉 Cross-Account EFS Infrastructure Deployment Completed Successfully!"
+    log "Cross-Account EFS Infrastructure Deployment Completed Successfully!"
     log ""
     log "Infrastructure deployed:"
     log "1. ✓ VPC infrastructure (CoreBank & Satellite accounts)"

@@ -382,7 +382,7 @@ main() {
     # Deploy Satellite EKS cluster
     deploy_eks_cluster "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_NODE_TYPE" 1 4 2
     
-    log "🎉 EKS Clusters deployment completed successfully!"
+    log "EKS Clusters deployment completed successfully!"
     log ""
     log "Clusters created:"
     log "  CoreBank: corebank-cluster (VPC: ${COREBANK_VPC_ID})"

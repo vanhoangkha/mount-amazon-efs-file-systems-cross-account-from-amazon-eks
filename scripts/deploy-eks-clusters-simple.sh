@@ -247,7 +247,7 @@ main() {
     # Deploy Satellite EKS cluster
     deploy_eks_cluster_simple "$SATELLITE_ACCOUNT" "satellite" "$SATELLITE_NODE_TYPE" 1 4 2
     
-    log "🎉 EKS Clusters deployment completed successfully!"
+    log "EKS Clusters deployment completed successfully!"
 }
 
 # Run main function

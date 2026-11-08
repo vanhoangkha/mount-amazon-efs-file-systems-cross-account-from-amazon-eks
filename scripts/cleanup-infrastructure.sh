@@ -238,7 +238,7 @@ main() {
     rm -f /tmp/*-trust-policy.json
     rm -f /tmp/*-efs-policy.json
     
-    log "🎉 Infrastructure cleanup completed successfully!"
+    log "Infrastructure cleanup completed successfully!"
     log ""
     log "All resources have been deleted:"
     log "  - VPC infrastructure (CoreBank VPC: $COREBANK_VPC_CIDR, Satellite VPC: $SATELLITE_VPC_CIDR)"
